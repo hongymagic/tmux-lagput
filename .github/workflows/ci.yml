@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep shellcheck tmux
+
+      - name: Install macOS tools
+        if: runner.os == 'macOS'
+        run: brew install ripgrep shellcheck tmux
+
+      - name: Run behavioural tests
+        run: bash tests/test.sh
+
+      - name: Check shell syntax
+        run: |
+          for file in tmux-lagput.tmux scripts/*.sh tests/test.sh tests/fixtures/* tests/fixtures-*/*; do
+              bash -n "$file"
+          done
+
+      - name: Run ShellCheck
+        run: shellcheck tmux-lagput.tmux scripts/*.sh tests/test.sh tests/fixtures/* tests/fixtures-*/*

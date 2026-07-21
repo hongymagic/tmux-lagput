@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+set -u
+
+case "${1:-}" in
+    display-message)
+        if [ "${TMUX_TEST_TARGET_EXISTS:-1}" != '1' ]; then
+            exit 1
+        fi
+        if [ "${*: -1}" = '#{pane_id}' ]; then
+            printf '%s\n' "${TMUX_TEST_PANE_ID:-%42}"
+        else
+            printf '%s\n' "${TMUX_TEST_DISPLAY_TARGET:-work:1.0}"
+        fi
+        ;;
+    send-keys)
+        {
+            printf 'send-keys'
+            shift
+            for argument in "$@"; do
+                printf '\t%s' "$argument"
+            done
+            printf '\n'
+        } >> "$TMUX_TEST_LOG"
+        ;;
+    show-option)
+        exit 0
+        ;;
+    display-popup|bind-key)
+        {
+            printf '%s' "$1"
+            shift
+            for argument in "$@"; do
+                printf '\t%s' "$argument"
+            done
+            printf '\n'
+        } >> "$TMUX_TEST_LOG"
+        ;;
+    *)
+        exit 0
+        ;;
+esac

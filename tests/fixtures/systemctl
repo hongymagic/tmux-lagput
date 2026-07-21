@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -u
+
+{
+    for argument in "$@"; do
+        printf '%s\t' "$argument"
+    done
+    printf '\n'
+} >> "$SYSTEMCTL_TEST_LOG"
+
+exit 0
