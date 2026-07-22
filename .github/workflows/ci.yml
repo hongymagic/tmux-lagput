@@ -51,13 +51,13 @@ jobs:
 
       - name: Check shell syntax
         run: |
-          for file in tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*; do
+          for file in tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*; do
               [ -f "$file" ] || continue
               bash -n "$file"
           done
 
       - name: Run ShellCheck
-        run: shellcheck tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+        run: shellcheck tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
 
   minimum-tmux:
     name: Minimum tmux (3.3a)

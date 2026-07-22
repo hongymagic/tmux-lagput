@@ -3,12 +3,12 @@
 ## Scope
 
 This repository contains a dependency-light tmux plugin written in Bash. Keep
-changes focused on delayed pane input, popup interaction, scheduling, and job
+changes focused on scheduled pane input, popup interaction, scheduling, and job
 state management.
 
 ## Layout
 
-- `tmux-lagput.tmux` registers TPM key bindings.
+- `tmux-send-later.tmux` registers TPM key bindings.
 - `scripts/popup-schedule.sh` captures the triggering pane and renders the form.
 - `scripts/popup-list.sh` lists and cancels pending jobs.
 - `scripts/schedule-job.sh` persists, executes, and cancels scheduled jobs.
@@ -44,8 +44,8 @@ Run before committing:
 bash tests/test.sh
 bash tests/test-calver.sh
 bash tests/smoke-tmux.sh
-bash -n tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
-shellcheck tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+bash -n tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+shellcheck tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
 ```
 
 Use conventional, imperative commit messages. Do not commit secrets, local tmux

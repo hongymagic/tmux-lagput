@@ -1,16 +1,17 @@
 # Support
 
-tmux-lagput is community maintained on a best-effort basis.
+tmux-send-later is community maintained on a best-effort basis.
 
 Before asking for help:
 
-1. Check the install, usage, options, and state sections in [README.md](README.md).
+1. Check the installation, usage, configuration, and state sections in
+   [README.md](README.md).
 2. Confirm tmux 3.3a or newer is running with `tmux -V`.
 3. Reproduce without optional fzf and gum integrations where possible.
-4. Search [existing issues](https://github.com/hongymagic/tmux-lagput/issues).
+4. Search [existing issues](https://github.com/hongymagic/tmux-send-later/issues).
 
 If the problem remains, open the most relevant [issue
-form](https://github.com/hongymagic/tmux-lagput/issues/new/choose). Include the
+form](https://github.com/hongymagic/tmux-send-later/issues/new/choose). Include the
 plugin version or commit, operating system, tmux and Bash versions, selected
 scheduling backend, reproduction steps, and observed output. Use harmless
 sample text and redact terminal contents, socket paths, and local state that

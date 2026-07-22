@@ -9,9 +9,9 @@ SCHEDULER="$SCRIPT_DIR/schedule-job.sh"
 INPUT_VALUE=''
 
 use_gum() {
-    [ "${SEND_DELAYED_FORCE_PLAIN:-0}" != '1' ] || return 1
+    [ "${SEND_LATER_FORCE_PLAIN:-0}" != '1' ] || return 1
     command -v gum >/dev/null 2>&1 || return 1
-    [ "${SEND_DELAYED_FORCE_GUM:-0}" = '1' ] || [ -t 0 ]
+    [ "${SEND_LATER_FORCE_GUM:-0}" = '1' ] || [ -t 0 ]
 }
 
 read_plain_value() {
@@ -90,12 +90,12 @@ read_value() {
 }
 
 resolve_state_dir() {
-    local state_dir="${TMUX_SEND_DELAYED_STATE_DIR:-}"
+    local state_dir="${TMUX_SEND_LATER_STATE_DIR:-}"
     if [ -z "$state_dir" ]; then
-        state_dir="$(tmux show-option -gqv '@send-delayed-state-dir' 2>/dev/null || true)"
+        state_dir="$(tmux show-option -gqv '@send-later-state-dir' 2>/dev/null || true)"
     fi
     if [ -z "$state_dir" ]; then
-        state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-lagput"
+        state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-send-later"
     fi
     printf '%s\n' "$state_dir"
 }
@@ -123,7 +123,7 @@ confirm_schedule() {
     local choice
 
     if use_gum; then
-        choice="$(gum choose --header 'Review delayed send' 'Schedule' 'Edit')" || return 2
+        choice="$(gum choose --header 'Review send' 'Schedule' 'Edit')" || return 2
         case "$choice" in
             Schedule) return 0 ;;
             Edit) return 1 ;;
@@ -132,7 +132,7 @@ confirm_schedule() {
     fi
 
     while true; do
-        if ! read_plain_value 'Schedule this delayed send? (Y/n)' ''; then
+        if ! read_plain_value 'Schedule this send? (Y/n)' ''; then
             return 2
         fi
         case "$INPUT_VALUE" in
@@ -185,14 +185,14 @@ open_popup() {
         exit 1
     fi
 
-    popup_width="$(tmux_option '@send-delayed-popup-width' '70%')"
-    popup_height="$(tmux_option '@send-delayed-popup-height' '16')"
-    border_lines="$(tmux_option '@send-delayed-popup-border-lines' 'rounded')"
+    popup_width="$(tmux_option '@send-later-popup-width' '70%')"
+    popup_height="$(tmux_option '@send-later-popup-height' '16')"
+    border_lines="$(tmux_option '@send-later-popup-border-lines' 'rounded')"
     popup_arguments=(display-popup -EE -t "$pane_id")
     if [ -n "$client_name" ]; then
         popup_arguments+=(-c "$client_name")
     fi
-    popup_arguments+=(-T 'Schedule delayed send' -w "$popup_width" -h "$popup_height")
+    popup_arguments+=(-T 'Schedule send for later' -w "$popup_width" -h "$popup_height")
     case "$border_lines" in
         default) ;;
         *) popup_arguments+=(-b "$border_lines") ;;
@@ -201,17 +201,17 @@ open_popup() {
     # The popup's shell expands this variable from the environment set above.
     # shellcheck disable=SC2016
     tmux "${popup_arguments[@]}" \
-        -e "TMUX_SEND_DELAYED_PANE_ID=$pane_id" \
-        -e "TMUX_SEND_DELAYED_CLIENT_NAME=$client_name" \
-        -e "TMUX_SEND_DELAYED_DISPLAY_TARGET=$display_target" \
-        -e "TMUX_SEND_DELAYED_SCRIPT=$SCRIPT_PATH" \
-        'exec "$TMUX_SEND_DELAYED_SCRIPT" --form'
+        -e "TMUX_SEND_LATER_PANE_ID=$pane_id" \
+        -e "TMUX_SEND_LATER_CLIENT_NAME=$client_name" \
+        -e "TMUX_SEND_LATER_DISPLAY_TARGET=$display_target" \
+        -e "TMUX_SEND_LATER_SCRIPT=$SCRIPT_PATH" \
+        'exec "$TMUX_SEND_LATER_SCRIPT" --form'
 }
 
 render_form() {
-    local pane_id="${TMUX_SEND_DELAYED_PANE_ID:-}"
-    local display_target="${TMUX_SEND_DELAYED_DISPLAY_TARGET:-}"
-    local client_name="${TMUX_SEND_DELAYED_CLIENT_NAME:-}"
+    local pane_id="${TMUX_SEND_LATER_PANE_ID:-}"
+    local display_target="${TMUX_SEND_LATER_DISPLAY_TARGET:-}"
+    local client_name="${TMUX_SEND_LATER_CLIENT_NAME:-}"
     local text=''
     local duration=''
     local seconds=''
@@ -270,7 +270,7 @@ render_form() {
         display_key="$key"
         [ -n "$display_key" ] || display_key='(none)'
         clear_popup
-        printf 'Review delayed send\n\n'
+        printf 'Review send\n\n'
         printf '  Target    %s (%s)\n' "$display_target" "$pane_id"
         printf '  Text      %s\n' "$text"
         printf '  Delay     %s\n' "$duration"
@@ -286,7 +286,7 @@ render_form() {
     done
 
     state_dir="$(resolve_state_dir)"
-    use_systemd="$(tmux show-option -gqv '@send-delayed-use-systemd' 2>/dev/null || true)"
+    use_systemd="$(tmux show-option -gqv '@send-later-use-systemd' 2>/dev/null || true)"
     schedule_arguments=(
         schedule
         --target "$pane_id"
@@ -300,7 +300,7 @@ render_form() {
     esac
 
     while true; do
-        if job_id="$(TMUX_SEND_DELAYED_STATE_DIR="$state_dir" "$SCHEDULER" "${schedule_arguments[@]}" 2>&1)"; then
+        if job_id="$(TMUX_SEND_LATER_STATE_DIR="$state_dir" "$SCHEDULER" "${schedule_arguments[@]}" 2>&1)"; then
             show_success_message "$client_name" "$duration" "$display_target"
             return 0
         fi

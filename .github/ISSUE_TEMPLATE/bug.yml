@@ -1,6 +1,6 @@
 ---
 name: Bug report
-description: Report reproducible incorrect behaviour in tmux-lagput
+description: Report reproducible incorrect behaviour in tmux-send-later
 title: "bug: "
 labels:
   - bug

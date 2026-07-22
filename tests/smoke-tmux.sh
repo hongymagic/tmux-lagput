@@ -4,11 +4,11 @@ set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMUX_BINARY="${1:-$(command -v tmux 2>/dev/null || true)}"
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-lagput-smoke.XXXXXX")"
-SOCKET_NAME="tmux-lagput-smoke-$$-${RANDOM:-0}"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-send-later-smoke.XXXXXX")"
+SOCKET_NAME="tmux-send-later-smoke-$$-${RANDOM:-0}"
 STATE_DIR="$TEST_ROOT/state"
 CAPTURE_FILE="$TEST_ROOT/captured.txt"
-MARKER="tmux-lagput-smoke-$$-${RANDOM:-0}"
+MARKER="tmux-send-later-smoke-$$-${RANDOM:-0}"
 
 # Invoked through the EXIT trap.
 # Older distro releases report trap-only functions as SC2317; newer releases
@@ -19,7 +19,7 @@ cleanup() {
         "$TMUX_BINARY" -L "$SOCKET_NAME" kill-server >/dev/null 2>&1 || true
     fi
     case "$TEST_ROOT" in
-        "${TMPDIR:-/tmp}/tmux-lagput-smoke."*) rm -rf -- "$TEST_ROOT" ;;
+        "${TMPDIR:-/tmp}/tmux-send-later-smoke."*) rm -rf -- "$TEST_ROOT" ;;
     esac
 }
 
@@ -42,27 +42,27 @@ export PATH="$tmux_directory:$PATH"
 
 pane_command="exec cat > $(shell_quote "$CAPTURE_FILE")"
 "$TMUX_BINARY" -L "$SOCKET_NAME" -f /dev/null new-session -d \
-    -s lagput -x 100 -y 30 "$pane_command"
-"$TMUX_BINARY" -L "$SOCKET_NAME" run-shell "$ROOT_DIR/tmux-lagput.tmux"
+    -s send-later -x 100 -y 30 "$pane_command"
+"$TMUX_BINARY" -L "$SOCKET_NAME" run-shell "$ROOT_DIR/tmux-send-later.tmux"
 
 key_descriptions="$("$TMUX_BINARY" -L "$SOCKET_NAME" list-keys -N)"
 case "$key_descriptions" in
-    *'Schedule delayed pane input'*) ;;
+    *'Schedule pane input for later'*) ;;
     *) fail 'schedule binding description is missing' ;;
 esac
 case "$key_descriptions" in
-    *'Manage delayed pane input'*) ;;
+    *'Manage pending pane input'*) ;;
     *) fail 'manage binding description is missing' ;;
 esac
 
-pane_id="$("$TMUX_BINARY" -L "$SOCKET_NAME" display-message -p -t 'lagput:0.0' '#{pane_id}')"
+pane_id="$("$TMUX_BINARY" -L "$SOCKET_NAME" display-message -p -t 'send-later:0.0' '#{pane_id}')"
 display_target="$("$TMUX_BINARY" -L "$SOCKET_NAME" display-message -p -t "$pane_id" '#{session_name}:#{window_index}.#{pane_index}')"
 socket_path="$("$TMUX_BINARY" -L "$SOCKET_NAME" display-message -p '#{socket_path}')"
 server_pid="$("$TMUX_BINARY" -L "$SOCKET_NAME" display-message -p '#{pid}')"
 
 job_id="$(env \
     TMUX="$socket_path,$server_pid,0" \
-    TMUX_SEND_DELAYED_STATE_DIR="$STATE_DIR" \
+    TMUX_SEND_LATER_STATE_DIR="$STATE_DIR" \
     "$ROOT_DIR/scripts/schedule-job.sh" schedule \
         --target "$pane_id" \
         --display-target "$display_target" \
@@ -87,4 +87,4 @@ while [ "$attempts" -gt 0 ]; do
     sleep 0.1
 done
 
-fail 'the captured pane did not receive the delayed text'
+fail 'the captured pane did not receive the scheduled text'

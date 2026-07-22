@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve tmux-lagput. Bug reports, focused changes, tests,
+Thanks for helping improve tmux-send-later. Bug reports, focused changes, tests,
 documentation, and accessibility improvements are welcome.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -21,8 +21,8 @@ needed for the full verification suite; `fzf`, `gum`, `setsid`, and systemd are
 optional.
 
 ```sh
-git clone https://github.com/hongymagic/tmux-lagput.git
-cd tmux-lagput
+git clone https://github.com/hongymagic/tmux-send-later.git
+cd tmux-send-later
 bash tests/test.sh
 ```
 
@@ -53,8 +53,8 @@ Run every check before submitting a pull request:
 bash tests/test.sh
 bash tests/test-calver.sh
 bash tests/smoke-tmux.sh
-bash -n tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
-shellcheck tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+bash -n tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+shellcheck tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
 ```
 
 CI repeats these checks on Linux and macOS. Include any additional manual tmux

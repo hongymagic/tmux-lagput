@@ -14,15 +14,15 @@ SELECTED_ACTION=''
 SELECTED_INDEX=''
 
 use_fzf() {
-    [ "${SEND_DELAYED_FORCE_PLAIN:-0}" != '1' ] || return 1
+    [ "${SEND_LATER_FORCE_PLAIN:-0}" != '1' ] || return 1
     command -v fzf >/dev/null 2>&1 || return 1
-    [ "${SEND_DELAYED_FORCE_FZF:-0}" = '1' ] || [ -t 0 ]
+    [ "${SEND_LATER_FORCE_FZF:-0}" = '1' ] || [ -t 0 ]
 }
 
 use_gum() {
-    [ "${SEND_DELAYED_FORCE_PLAIN:-0}" != '1' ] || return 1
+    [ "${SEND_LATER_FORCE_PLAIN:-0}" != '1' ] || return 1
     command -v gum >/dev/null 2>&1 || return 1
-    [ "${SEND_DELAYED_FORCE_GUM:-0}" = '1' ] || [ -t 0 ]
+    [ "${SEND_LATER_FORCE_GUM:-0}" = '1' ] || [ -t 0 ]
 }
 
 read_plain_value() {
@@ -85,12 +85,12 @@ sanitize_display() {
 }
 
 resolve_state_dir() {
-    local state_dir="${TMUX_SEND_DELAYED_STATE_DIR:-}"
+    local state_dir="${TMUX_SEND_LATER_STATE_DIR:-}"
     if [ -z "$state_dir" ]; then
-        state_dir="$(tmux show-option -gqv '@send-delayed-state-dir' 2>/dev/null || true)"
+        state_dir="$(tmux show-option -gqv '@send-later-state-dir' 2>/dev/null || true)"
     fi
     if [ -z "$state_dir" ]; then
-        state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-lagput"
+        state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-send-later"
     fi
     printf '%s\n' "$state_dir"
 }
@@ -411,7 +411,7 @@ clear_popup() {
 
 show_status_message() {
     local message="$1"
-    local client_name="${TMUX_SEND_DELAYED_CLIENT_NAME:-}"
+    local client_name="${TMUX_SEND_LATER_CLIENT_NAME:-}"
     local -a message_arguments
 
     message="${message//#/##}"
@@ -435,14 +435,14 @@ open_popup() {
         printf 'No triggering pane was supplied.\n' >&2
         exit 1
     fi
-    popup_width="$(tmux_option '@send-delayed-list-popup-width' '80%')"
-    popup_height="$(tmux_option '@send-delayed-list-popup-height' '70%')"
-    border_lines="$(tmux_option '@send-delayed-popup-border-lines' 'rounded')"
+    popup_width="$(tmux_option '@send-later-list-popup-width' '80%')"
+    popup_height="$(tmux_option '@send-later-list-popup-height' '70%')"
+    border_lines="$(tmux_option '@send-later-popup-border-lines' 'rounded')"
     popup_arguments=(display-popup -EE -t "$pane_id")
     if [ -n "$client_name" ]; then
         popup_arguments+=(-c "$client_name")
     fi
-    popup_arguments+=(-T 'Pending delayed sends' -w "$popup_width" -h "$popup_height")
+    popup_arguments+=(-T 'Pending sends' -w "$popup_width" -h "$popup_height")
     case "$border_lines" in
         default) ;;
         *) popup_arguments+=(-b "$border_lines") ;;
@@ -451,9 +451,9 @@ open_popup() {
     # The popup's shell expands this variable from the environment set above.
     # shellcheck disable=SC2016
     tmux "${popup_arguments[@]}" \
-        -e "TMUX_SEND_DELAYED_CLIENT_NAME=$client_name" \
-        -e "TMUX_SEND_DELAYED_LIST_SCRIPT=$SCRIPT_PATH" \
-        'exec "$TMUX_SEND_DELAYED_LIST_SCRIPT" --form'
+        -e "TMUX_SEND_LATER_CLIENT_NAME=$client_name" \
+        -e "TMUX_SEND_LATER_LIST_SCRIPT=$SCRIPT_PATH" \
+        'exec "$TMUX_SEND_LATER_LIST_SCRIPT" --form'
 }
 
 render_list() {
@@ -463,13 +463,13 @@ render_list() {
     local selector_status
 
     state_dir="$(resolve_state_dir)"
-    export TMUX_SEND_DELAYED_STATE_DIR="$state_dir"
+    export TMUX_SEND_LATER_STATE_DIR="$state_dir"
     while true; do
         "$SCHEDULER" reconcile --older-than 300 >/dev/null 2>&1 || true
         load_jobs "$state_dir"
         build_rows "$state_dir"
         clear_popup
-        printf 'Pending delayed tmux sends\n\n'
+        printf 'Pending tmux sends\n\n'
 
         if [ "${#JOB_IDS[@]}" -eq 0 ]; then
             printf 'No pending jobs.\n'
@@ -516,18 +516,18 @@ render_list() {
 
         clear_popup
         if ! render_job_details "$state_dir" "$selected_job"; then
-            show_status_message 'Selected delayed send is no longer pending'
+            show_status_message 'Selected send is no longer pending'
             printf 'The job is no longer pending.\n'
             continue
         fi
         printf '\n'
         confirm_cancellation || continue
 
-        if ! TMUX_SEND_DELAYED_STATE_DIR="$state_dir" "$SCHEDULER" cancel "$selected_job"; then
-            show_status_message "Could not cancel delayed send -> $selected_target"
+        if ! TMUX_SEND_LATER_STATE_DIR="$state_dir" "$SCHEDULER" cancel "$selected_job"; then
+            show_status_message "Could not cancel send -> $selected_target"
             printf 'The job was already running or cancelled.\n'
         else
-            show_status_message "Cancelled delayed send -> $selected_target"
+            show_status_message "Cancelled send -> $selected_target"
         fi
         printf '\n'
     done

@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We pledge to make participation in tmux-lagput a harassment-free experience
+We pledge to make participation in tmux-send-later a harassment-free experience
 for everyone, regardless of age, body size, visible or invisible disability,
 ethnicity, sex characteristics, gender identity and expression, level of
 experience, education, socio-economic status, nationality, personal
@@ -37,7 +37,7 @@ officially representing the project in public spaces.
 ## Reporting and enforcement
 
 Do not open a public issue for a sensitive conduct report. Use GitHub's
-[private vulnerability reporting](https://github.com/hongymagic/tmux-lagput/security/advisories/new)
+[private vulnerability reporting](https://github.com/hongymagic/tmux-send-later/security/advisories/new)
 and prefix the report title with `Conduct:`. Project maintainers will review
 reports privately, gather necessary context, and respond proportionately.
 

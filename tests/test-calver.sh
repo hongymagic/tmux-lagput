@@ -7,11 +7,11 @@ CALVER="$ROOT_DIR/scripts/calver.sh"
 RELEASE="$ROOT_DIR/scripts/release.sh"
 PASSED=0
 FAILED=0
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-lagput-calver-test.XXXXXX")"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-send-later-calver-test.XXXXXX")"
 
 cleanup() {
     case "$TEST_ROOT" in
-        "${TMPDIR:-/tmp}/tmux-lagput-calver-test."*) rm -rf -- "$TEST_ROOT" ;;
+        "${TMPDIR:-/tmp}/tmux-send-later-calver-test."*) rm -rf -- "$TEST_ROOT" ;;
     esac
 }
 

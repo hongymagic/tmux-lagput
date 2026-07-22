@@ -1,6 +1,6 @@
-tmux-lagput is a tmux-native command palette for scheduling literal text against
-the pane that opened it, then reviewing or cancelling pending sends from a
-second popup.
+tmux-send-later is the tmux-native, cancellable scheduler for literal pane
+input. It schedules text for a foreground application or TUI, then sends it to
+the pane that opened the popup even if focus has moved elsewhere.
 
 Highlights:
 
@@ -17,8 +17,9 @@ are optional.
 > [!CAUTION]
 > The default trailing `Enter` can execute the scheduled text. Pending text and
 > job history are stored locally as plaintext. A captured pane and tmux server
-> must still exist when a job runs; lagput never retargets a replacement pane.
+> must still exist when a job runs; tmux-send-later never retargets a
+> replacement pane.
 
-See the [installation and upgrade guide](https://github.com/hongymagic/tmux-lagput#install),
-[security and data model](https://github.com/hongymagic/tmux-lagput/security/policy),
-and [full changelog](https://github.com/hongymagic/tmux-lagput/blob/main/CHANGELOG.md).
+See the [installation and upgrade guide](https://github.com/hongymagic/tmux-send-later#install),
+[security and data model](https://github.com/hongymagic/tmux-send-later/security/policy),
+and [full changelog](https://github.com/hongymagic/tmux-send-later/blob/main/CHANGELOG.md).

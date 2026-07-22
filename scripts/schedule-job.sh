@@ -17,20 +17,20 @@ usage() {
 }
 
 resolve_state_dir() {
-    if [ -n "${TMUX_SEND_DELAYED_STATE_DIR:-}" ]; then
-        printf '%s\n' "$TMUX_SEND_DELAYED_STATE_DIR"
+    if [ -n "${TMUX_SEND_LATER_STATE_DIR:-}" ]; then
+        printf '%s\n' "$TMUX_SEND_LATER_STATE_DIR"
         return
     fi
 
     local configured_state_dir=''
     if command -v tmux >/dev/null 2>&1; then
-        configured_state_dir="$(tmux show-option -gqv '@send-delayed-state-dir' 2>/dev/null || true)"
+        configured_state_dir="$(tmux show-option -gqv '@send-later-state-dir' 2>/dev/null || true)"
     fi
 
     if [ -n "$configured_state_dir" ]; then
         printf '%s\n' "$configured_state_dir"
     else
-        printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-lagput"
+        printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-send-later"
     fi
 }
 
@@ -228,8 +228,8 @@ cleanup_systemd_units() {
     local cleanup_status=0
 
     [ -n "$timer_unit" ] || return 0
-    [[ "$timer_unit" =~ ^tmux-lagput-[A-Za-z0-9._-]+\.timer$ ]] || return 1
-    [[ "$service_unit" =~ ^tmux-lagput-[A-Za-z0-9._-]+\.service$ ]] || return 1
+    [[ "$timer_unit" =~ ^tmux-send-later-[A-Za-z0-9._-]+\.timer$ ]] || return 1
+    [[ "$service_unit" =~ ^tmux-send-later-[A-Za-z0-9._-]+\.service$ ]] || return 1
     command -v systemctl >/dev/null 2>&1 || return 1
     if ! systemctl --user disable --now "$timer_unit" >/dev/null 2>&1; then
         systemd_teardown_is_complete \
@@ -257,7 +257,7 @@ install_systemd_job() {
     local job_dir="$3"
     local worker_token="$4"
     local run_at
-    local unit_base="tmux-lagput-$job_id"
+    local unit_base="tmux-send-later-$job_id"
     local service_unit="$unit_base.service"
     local timer_unit="$unit_base.timer"
     local user_unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
@@ -280,7 +280,7 @@ install_systemd_job() {
     mkdir -p "$user_unit_dir"
 
     {
-        printf '[Unit]\nDescription=Send delayed tmux input (%s)\n\n' "$job_id"
+        printf '[Unit]\nDescription=Send tmux input later (%s)\n\n' "$job_id"
         printf '[Service]\nType=oneshot\nExecStart=%s --run-systemd %s %s %s\n' \
             "$(systemd_quote "$SCRIPT_PATH")" \
             "$(systemd_quote "$state_dir")" \
@@ -289,7 +289,7 @@ install_systemd_job() {
     } > "$service_temp" || return 1
 
     {
-        printf '[Unit]\nDescription=Timer for delayed tmux input (%s)\n\n' "$job_id"
+        printf '[Unit]\nDescription=Timer for tmux input (%s)\n\n' "$job_id"
         printf '[Timer]\nOnCalendar=@%s\nPersistent=true\nAccuracySec=1s\nUnit=%s\n\n' "$run_at" "$service_unit"
         printf '[Install]\nWantedBy=timers.target\n'
     } > "$timer_temp" || {
@@ -463,7 +463,7 @@ create_job() {
 
     state_dir="$(resolve_state_dir)"
     if ! ensure_state_layout "$state_dir" || ! acquire_state_lock "$state_dir"; then
-        printf 'Could not lock the delayed-job state directory.\n' >&2
+        printf 'Could not lock the job state directory.\n' >&2
         exit 1
     fi
     trap release_state_lock EXIT
@@ -506,7 +506,7 @@ create_job() {
         ! write_field "$job_dir" 'tmux-socket-identity' "$tmux_socket_identity" || \
         ! write_field "$job_dir" 'worker-token' "$worker_token"; then
         rm -rf -- "$job_dir"
-        printf 'Could not persist the delayed job.\n' >&2
+        printf 'Could not persist the scheduled job.\n' >&2
         exit 1
     fi
 
@@ -558,7 +558,7 @@ create_job() {
         if [ "$teardown_status" -eq 0 ]; then
             rm -rf -- "$job_dir"
         fi
-        printf 'Could not publish the delayed job.\n' >&2
+        printf 'Could not publish the scheduled job.\n' >&2
         exit 1
     fi
 
@@ -661,7 +661,7 @@ run_job_now() {
         exit 1
     fi
 
-    finish_running_job "$state_dir" "$job_id" 'sent' "$display_target" 'delayed input delivered'
+    finish_running_job "$state_dir" "$job_id" 'sent' "$display_target" 'scheduled input delivered'
 }
 
 run_job_after_delay() {
@@ -814,8 +814,8 @@ cleanup_job_backend() {
     local service_file
     local timer_file
     local unit_dir
-    local expected_timer="tmux-lagput-$job_id.timer"
-    local expected_service="tmux-lagput-$job_id.service"
+    local expected_timer="tmux-send-later-$job_id.timer"
+    local expected_service="tmux-send-later-$job_id.service"
 
     backend="$(read_field "$job_dir/backend")"
     if [ "$backend" = 'background' ] && [ "$stop_worker" -eq 1 ]; then

@@ -8,14 +8,14 @@ SCHEDULER="$ROOT_DIR/scripts/schedule-job.sh"
 SCHEDULE_POPUP="$ROOT_DIR/scripts/popup-schedule.sh"
 LIST_POPUP="$ROOT_DIR/scripts/popup-list.sh"
 CLEANUP_SCRIPT="$ROOT_DIR/scripts/cleanup.sh"
-PLUGIN_ENTRYPOINT="$ROOT_DIR/tmux-lagput.tmux"
+PLUGIN_ENTRYPOINT="$ROOT_DIR/tmux-send-later.tmux"
 FIXTURES_DIR="$ROOT_DIR/tests/fixtures"
 PASSED=0
 FAILED=0
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-lagput-test.XXXXXX")"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tmux-send-later-test.XXXXXX")"
 
 cleanup() {
-    if [[ "$TEST_ROOT" == "${TMPDIR:-/tmp}/tmux-lagput-test."* ]]; then
+    if [[ "$TEST_ROOT" == "${TMPDIR:-/tmp}/tmux-send-later-test."* ]]; then
         rm -rf -- "$TEST_ROOT"
     fi
 }
@@ -160,7 +160,7 @@ schedule_test_job() {
 
     env \
         PATH="$FIXTURES_DIR:$PATH" \
-        TMUX_SEND_DELAYED_STATE_DIR="$state_dir" \
+        TMUX_SEND_LATER_STATE_DIR="$state_dir" \
         TMUX_TEST_LOG="$log_file" \
         TMUX_TEST_TARGET_EXISTS="$target_exists" \
         "$SCHEDULER" schedule \
@@ -187,7 +187,7 @@ LAUNCH_FAILURE_STATE="$TEST_ROOT/launch-failure-state"
 LAUNCH_FAILURE_OUTPUT=''
 if LAUNCH_FAILURE_OUTPUT="$(env \
     PATH="$ROOT_DIR/tests/fixtures-launch-failure:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$LAUNCH_FAILURE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LAUNCH_FAILURE_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/launch-failure-tmux.log" \
     "$SCHEDULER" schedule \
         --target '%42' \
@@ -245,7 +245,7 @@ touch "$REPLACEMENT_SOCKET"
 env \
     PATH="$FIXTURES_DIR:$PATH" \
     TMUX="$RESTART_SOCKET,123,0" \
-    TMUX_SEND_DELAYED_STATE_DIR="$RESTART_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$RESTART_STATE" \
     TMUX_TEST_LOG="$RESTART_LOG" \
     TMUX_TEST_TARGET_EXISTS=1 \
     "$SCHEDULER" schedule \
@@ -272,8 +272,8 @@ if [ "$CANCEL_JOB_ONE" != "$CANCEL_JOB_TWO" ]; then
 else
     fail 'creates unique IDs for concurrent jobs'
 fi
-env TMUX_SEND_DELAYED_STATE_DIR="$CANCEL_STATE" "$SCHEDULER" cancel "$CANCEL_JOB_ONE" >/dev/null
-env TMUX_SEND_DELAYED_STATE_DIR="$CANCEL_STATE" "$SCHEDULER" cancel "$CANCEL_JOB_TWO" >/dev/null
+env TMUX_SEND_LATER_STATE_DIR="$CANCEL_STATE" "$SCHEDULER" cancel "$CANCEL_JOB_ONE" >/dev/null
+env TMUX_SEND_LATER_STATE_DIR="$CANCEL_STATE" "$SCHEDULER" cancel "$CANCEL_JOB_TWO" >/dev/null
 assert_contains 'records cancellation in job history' "$CANCEL_STATE/jobs-history.log" $'\tcancelled\t'
 worker_stopped=0
 for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -322,7 +322,7 @@ printf '%s\n' "$RECONCILE_STAGING_PID" > "$RECONCILE_STAGING_DIR/worker-pid"
 printf '%s\n' 'staging-token' > "$RECONCILE_STAGING_DIR/worker-token"
 printf '%s\n' 'background' > "$RECONCILE_STAGING_DIR/backend"
 printf '%s\n' 'work:1.2' > "$RECONCILE_STAGING_DIR/display-target"
-if env TMUX_SEND_DELAYED_STATE_DIR="$RECONCILE_STATE" \
+if env TMUX_SEND_LATER_STATE_DIR="$RECONCILE_STATE" \
     "$SCHEDULER" reconcile --older-than 300 >/dev/null 2>&1; then
     pass 'reconciles claimed jobs older than the configured threshold'
 else
@@ -358,7 +358,7 @@ wait "$RECONCILE_FRESH_PID" 2>/dev/null || true
 wait "$RECONCILE_STAGING_PID" 2>/dev/null || true
 
 DOT_JOB_ERROR="$(env \
-    TMUX_SEND_DELAYED_STATE_DIR="$TEST_ROOT/dot-job-state" \
+    TMUX_SEND_LATER_STATE_DIR="$TEST_ROOT/dot-job-state" \
     "$SCHEDULER" cancel '..' 2>&1 || true)"
 assert_output 'rejects dot-segment job IDs before accessing state' '1' bash -c "printf '%s' \"\$1\" | rg -q '^Usage:' && printf 1" _ "$DOT_JOB_ERROR"
 
@@ -369,7 +369,7 @@ SYSTEMD_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/systemd-tmux.log" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_LOG" \
     "$SCHEDULER" schedule \
@@ -379,18 +379,18 @@ SYSTEMD_JOB="$(env \
         --key 'Enter' \
         --delay 30 \
         --use-systemd)"
-SYSTEMD_TIMER="$SYSTEMD_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_JOB.timer"
-SYSTEMD_SERVICE="$SYSTEMD_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_JOB.service"
+SYSTEMD_TIMER="$SYSTEMD_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_JOB.timer"
+SYSTEMD_SERVICE="$SYSTEMD_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_JOB.service"
 assert_file_exists 'creates a persistent systemd timer on Linux' "$SYSTEMD_TIMER"
 assert_file_exists 'creates a matching systemd service on Linux' "$SYSTEMD_SERVICE"
 assert_contains 'marks the systemd timer persistent' "$SYSTEMD_TIMER" 'Persistent=true'
 assert_contains 'quotes a state path containing spaces in ExecStart' "$SYSTEMD_SERVICE" "\"$SYSTEMD_STATE\""
-assert_contains 'enables the generated systemd timer' "$SYSTEMD_LOG" $'--user\tenable\t--now\ttmux-lagput-'
+assert_contains 'enables the generated systemd timer' "$SYSTEMD_LOG" $'--user\tenable\t--now\ttmux-send-later-'
 env \
     PATH="$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_STATE" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_LOG" \
     "$SCHEDULER" cancel "$SYSTEMD_JOB" >/dev/null
 if [ ! -e "$SYSTEMD_TIMER" ] && [ ! -e "$SYSTEMD_SERVICE" ]; then
@@ -406,7 +406,7 @@ SYSTEMD_FAILURE_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/systemd-failure-tmux.log" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_FAILURE_LOG" \
     "$SCHEDULER" schedule \
@@ -416,13 +416,13 @@ SYSTEMD_FAILURE_JOB="$(env \
         --key 'Enter' \
         --delay 120 \
         --use-systemd)"
-SYSTEMD_FAILURE_TIMER="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_FAILURE_JOB.timer"
-SYSTEMD_FAILURE_SERVICE="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_FAILURE_JOB.service"
+SYSTEMD_FAILURE_TIMER="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_FAILURE_JOB.timer"
+SYSTEMD_FAILURE_SERVICE="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_FAILURE_JOB.service"
 if env \
     PATH="$ROOT_DIR/tests/fixtures-systemctl-failure:$FIXTURES_DIR:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
     "$SCHEDULER" cancel "$SYSTEMD_FAILURE_JOB" >/dev/null 2>&1; then
     fail 'cancellation fails closed when systemd teardown fails'
 else
@@ -442,7 +442,7 @@ env \
     PATH="$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_FAILURE_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null
 if [ ! -d "$SYSTEMD_FAILURE_STATE/cancelled/$SYSTEMD_FAILURE_JOB" ] && \
@@ -459,7 +459,7 @@ SYSTEMD_AMBIGUOUS_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/systemd-ambiguous-tmux.log" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_AMBIGUOUS_LOG" \
     "$SCHEDULER" schedule \
@@ -469,13 +469,13 @@ SYSTEMD_AMBIGUOUS_JOB="$(env \
         --key 'Enter' \
         --delay 120 \
         --use-systemd)"
-SYSTEMD_AMBIGUOUS_TIMER="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_AMBIGUOUS_JOB.timer"
-SYSTEMD_AMBIGUOUS_SERVICE="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_AMBIGUOUS_JOB.service"
+SYSTEMD_AMBIGUOUS_TIMER="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_AMBIGUOUS_JOB.timer"
+SYSTEMD_AMBIGUOUS_SERVICE="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_AMBIGUOUS_JOB.service"
 if env \
     PATH="$ROOT_DIR/tests/fixtures-systemctl-ambiguous:$FIXTURES_DIR:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
     "$SCHEDULER" cancel "$SYSTEMD_AMBIGUOUS_JOB" >/dev/null 2>&1; then
     fail 'cancellation fails closed when systemd state is ambiguous'
 else
@@ -495,7 +495,7 @@ env \
     PATH="$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_AMBIGUOUS_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null
 
@@ -506,7 +506,7 @@ SYSTEMD_REMOVED_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_REMOVED_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/systemd-removed-tmux.log" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_REMOVED_LOG" \
     "$SCHEDULER" schedule \
@@ -516,8 +516,8 @@ SYSTEMD_REMOVED_JOB="$(env \
         --key 'Enter' \
         --delay 120 \
         --use-systemd)"
-SYSTEMD_REMOVED_TIMER="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_REMOVED_JOB.timer"
-SYSTEMD_REMOVED_SERVICE="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_REMOVED_JOB.service"
+SYSTEMD_REMOVED_TIMER="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_REMOVED_JOB.timer"
+SYSTEMD_REMOVED_SERVICE="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_REMOVED_JOB.service"
 mv \
     "$SYSTEMD_REMOVED_STATE/jobs/$SYSTEMD_REMOVED_JOB" \
     "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB"
@@ -529,7 +529,7 @@ if env \
     PATH="$ROOT_DIR/tests/fixtures-systemctl-already-removed:$FIXTURES_DIR:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_REMOVED_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_REMOVED_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null 2>&1; then
     pass 'cleanup completes an already-finished systemd teardown'
@@ -546,16 +546,16 @@ assert_contains 'already-finished systemd teardown records history' \
     $'\t'"$SYSTEMD_REMOVED_JOB"$'\tcancelled\twork:1.0\tcancelled by user'
 assert_contains 'already-finished teardown verifies the timer is inactive' \
     "$SYSTEMD_REMOVED_LOG" \
-    $'--user\tis-active\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.timer'
+    $'--user\tis-active\ttmux-send-later-'"$SYSTEMD_REMOVED_JOB"'.timer'
 assert_contains 'already-finished teardown verifies the timer is not enabled' \
     "$SYSTEMD_REMOVED_LOG" \
-    $'--user\tis-enabled\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.timer'
+    $'--user\tis-enabled\ttmux-send-later-'"$SYSTEMD_REMOVED_JOB"'.timer'
 assert_contains 'already-finished teardown verifies the service is inactive' \
     "$SYSTEMD_REMOVED_LOG" \
-    $'--user\tis-active\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.service'
+    $'--user\tis-active\ttmux-send-later-'"$SYSTEMD_REMOVED_JOB"'.service'
 assert_contains 'already-finished teardown verifies the service is not enabled' \
     "$SYSTEMD_REMOVED_LOG" \
-    $'--user\tis-enabled\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.service'
+    $'--user\tis-enabled\ttmux-send-later-'"$SYSTEMD_REMOVED_JOB"'.service'
 
 SYSTEMD_PUBLISH_STATE="$TEST_ROOT/systemd-publish-state"
 SYSTEMD_PUBLISH_CONFIG="$TEST_ROOT/systemd-publish-config"
@@ -565,7 +565,7 @@ if env \
     PATH="$ROOT_DIR/tests/fixtures-systemctl-publish-failure:$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_PUBLISH_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/systemd-publish-tmux.log" \
     SYSTEMCTL_PUBLISH_JOB_FILE="$SYSTEMD_PUBLISH_JOB_FILE" \
     "$SCHEDULER" schedule \
@@ -580,8 +580,8 @@ else
     pass 'scheduling fails when an armed systemd job cannot be published'
 fi
 SYSTEMD_PUBLISH_JOB="$(read_first_line "$SYSTEMD_PUBLISH_JOB_FILE")"
-SYSTEMD_PUBLISH_TIMER="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_PUBLISH_JOB.timer"
-SYSTEMD_PUBLISH_SERVICE="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_PUBLISH_JOB.service"
+SYSTEMD_PUBLISH_TIMER="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_PUBLISH_JOB.timer"
+SYSTEMD_PUBLISH_SERVICE="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-send-later-$SYSTEMD_PUBLISH_JOB.service"
 if [ -d "$SYSTEMD_PUBLISH_STATE/staging/$SYSTEMD_PUBLISH_JOB" ] || \
     [ -d "$SYSTEMD_PUBLISH_STATE/abandoned/$SYSTEMD_PUBLISH_JOB" ]; then
     pass 'failed publication retains systemd job metadata for cleanup'
@@ -598,7 +598,7 @@ env \
     PATH="$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$SYSTEMD_PUBLISH_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_PUBLISH_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null
 if [ ! -e "$SYSTEMD_PUBLISH_TIMER" ] && [ ! -e "$SYSTEMD_PUBLISH_SERVICE" ]; then
@@ -611,7 +611,7 @@ DARWIN_STATE="$TEST_ROOT/darwin-state"
 DARWIN_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-darwin:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
-    TMUX_SEND_DELAYED_STATE_DIR="$DARWIN_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$DARWIN_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/darwin-tmux.log" \
     SYSTEMCTL_TEST_LOG="$TEST_ROOT/darwin-systemctl.log" \
     "$SCHEDULER" schedule \
@@ -622,7 +622,7 @@ DARWIN_JOB="$(env \
         --delay 2 \
         --use-systemd)"
 assert_contains 'falls back to a background worker on macOS' "$DARWIN_STATE/jobs/$DARWIN_JOB/backend" 'background'
-env TMUX_SEND_DELAYED_STATE_DIR="$DARWIN_STATE" "$SCHEDULER" cancel "$DARWIN_JOB" >/dev/null
+env TMUX_SEND_LATER_STATE_DIR="$DARWIN_STATE" "$SCHEDULER" cancel "$DARWIN_JOB" >/dev/null
 
 CLEANUP_STATE="$TEST_ROOT/cleanup-state"
 CLEANUP_LOG="$TEST_ROOT/cleanup-tmux.log"
@@ -634,7 +634,7 @@ CLEANUP_SYSTEMD_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" \
     TMUX_TEST_LOG="$CLEANUP_LOG" \
     SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
     "$SCHEDULER" schedule \
@@ -644,8 +644,8 @@ CLEANUP_SYSTEMD_JOB="$(env \
         --key 'Enter' \
         --delay 120 \
         --use-systemd)"
-CLEANUP_TIMER="$CLEANUP_CONFIG/systemd/user/tmux-lagput-$CLEANUP_SYSTEMD_JOB.timer"
-CLEANUP_SERVICE="$CLEANUP_CONFIG/systemd/user/tmux-lagput-$CLEANUP_SYSTEMD_JOB.service"
+CLEANUP_TIMER="$CLEANUP_CONFIG/systemd/user/tmux-send-later-$CLEANUP_SYSTEMD_JOB.timer"
+CLEANUP_SERVICE="$CLEANUP_CONFIG/systemd/user/tmux-send-later-$CLEANUP_SYSTEMD_JOB.service"
 CLEANUP_RUNNING_JOB='cleanup-running-job'
 CLEANUP_STAGING_JOB='cleanup-staging-job'
 CLEANUP_CANCELLED_JOB='cleanup-cancelled-job'
@@ -667,7 +667,7 @@ printf '%s\n' 'cancelled during cleanup' > "$CLEANUP_STATE/cancelled/$CLEANUP_CA
 printf '%s\n' 'work:1.6' > "$CLEANUP_STATE/cancelled/$CLEANUP_INCOMPLETE_JOB/display-target"
 printf '%s\n' 'work:1.4' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/display-target"
 printf '%s\n' 'sent' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/terminal-status"
-printf '%s\n' 'delayed input delivered' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/terminal-detail"
+printf '%s\n' 'scheduled input delivered' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/terminal-detail"
 printf '%s\n' 'work:1.5' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/display-target"
 printf '%s\n' 'failed' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/terminal-status"
 printf '%s\n' 'delivery outcome is unknown' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/terminal-detail"
@@ -676,7 +676,7 @@ if env \
     PATH="$FIXTURES_DIR:$PATH" \
     HOME="$TEST_ROOT/home" \
     XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
-    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" \
     SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null 2>&1; then
     pass 'cleanup command completes successfully'
@@ -689,7 +689,7 @@ else
     fail 'cleanup stops pending background workers' "worker $CLEANUP_BACKGROUND_PID is still running"
 fi
 assert_contains 'cleanup disables pending systemd timers' "$CLEANUP_SYSTEMD_LOG" \
-    $'--user\tdisable\t--now\ttmux-lagput-'"$CLEANUP_SYSTEMD_JOB"'.timer'
+    $'--user\tdisable\t--now\ttmux-send-later-'"$CLEANUP_SYSTEMD_JOB"'.timer'
 if [ ! -e "$CLEANUP_TIMER" ] && [ ! -e "$CLEANUP_SERVICE" ]; then
     pass 'cleanup removes generated systemd unit files'
 else
@@ -721,7 +721,7 @@ assert_contains 'cleanup recovers a stranded cancelled job' "$CLEANUP_STATE/jobs
 assert_contains 'cleanup conservatively recovers incomplete transition metadata' "$CLEANUP_STATE/jobs-history.log" \
     $'\tcleanup-incomplete-job\tfailed\twork:1.6\tdelivery outcome is unknown'
 assert_contains 'cleanup recovers a stranded finishing job' "$CLEANUP_STATE/jobs-history.log" \
-    $'\tcleanup-finishing-job\tsent\twork:1.4\tdelayed input delivered'
+    $'\tcleanup-finishing-job\tsent\twork:1.4\tscheduled input delivered'
 assert_contains 'cleanup recovers a stranded abandoned job' "$CLEANUP_STATE/jobs-history.log" \
     $'\tcleanup-abandoned-job\tfailed\twork:1.5\tdelivery outcome is unknown'
 if [ -f "$CLEANUP_STATE/disabled" ]; then
@@ -731,7 +731,7 @@ else
 fi
 if env \
     PATH="$FIXTURES_DIR:$PATH" \
-    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" \
     TMUX_TEST_LOG="$CLEANUP_LOG" \
     "$SCHEDULER" schedule \
         --target '%42' \
@@ -745,7 +745,7 @@ else
 fi
 env \
     PATH="$FIXTURES_DIR:$PATH" \
-    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" \
     TMUX_TEST_LOG="$CLEANUP_LOG" \
     "$PLUGIN_ENTRYPOINT" >/dev/null 2>&1
 if [ ! -f "$CLEANUP_STATE/disabled" ]; then
@@ -754,14 +754,14 @@ else
     fail 'loading the plugin re-enables scheduling after cleanup'
 fi
 if [ -d "$CLEANUP_STATE/jobs/$CLEANUP_BACKGROUND_JOB" ]; then
-    env TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" "$SCHEDULER" cancel "$CLEANUP_BACKGROUND_JOB" >/dev/null 2>&1 || true
+    env TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" "$SCHEDULER" cancel "$CLEANUP_BACKGROUND_JOB" >/dev/null 2>&1 || true
 fi
 if [ -d "$CLEANUP_STATE/jobs/$CLEANUP_SYSTEMD_JOB" ]; then
     env \
         PATH="$FIXTURES_DIR:$PATH" \
         HOME="$TEST_ROOT/home" \
         XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
-        TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+        TMUX_SEND_LATER_STATE_DIR="$CLEANUP_STATE" \
         SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
         "$SCHEDULER" cancel "$CLEANUP_SYSTEMD_JOB" >/dev/null 2>&1 || true
 fi
@@ -774,11 +774,11 @@ env \
     TMUX_TEST_PANE_ID='%42' \
     TMUX_TEST_DISPLAY_TARGET='work:1.0' \
     "$SCHEDULE_POPUP" --open '%42' 'client-a' >/dev/null 2>&1 || true
-assert_contains 'schedule popup receives the captured pane ID' "$LAUNCH_LOG" 'TMUX_SEND_DELAYED_PANE_ID=%42'
-assert_contains 'schedule popup receives the captured display target' "$LAUNCH_LOG" 'TMUX_SEND_DELAYED_DISPLAY_TARGET=work:1.0'
+assert_contains 'schedule popup receives the captured pane ID' "$LAUNCH_LOG" 'TMUX_SEND_LATER_PANE_ID=%42'
+assert_contains 'schedule popup receives the captured display target' "$LAUNCH_LOG" 'TMUX_SEND_LATER_DISPLAY_TARGET=work:1.0'
 assert_contains 'schedule popup resolves its label for the triggering client' "$LAUNCH_LOG" $'display-message\t-p\t-t\t%42\t-c\tclient-a'
 assert_contains 'schedule popup targets the triggering client and pane' "$LAUNCH_LOG" $'display-popup\t-EE\t-t\t%42\t-c\tclient-a'
-assert_contains 'schedule popup has native responsive chrome' "$LAUNCH_LOG" $'-T\tSchedule delayed send\t-w\t70%\t-h\t16\t-b\trounded'
+assert_contains 'schedule popup has native responsive chrome' "$LAUNCH_LOG" $'-T\tSchedule send for later\t-w\t70%\t-h\t16\t-b\trounded'
 
 LIST_LAUNCH_LOG="$TEST_ROOT/list-launch-tmux.log"
 env \
@@ -786,15 +786,15 @@ env \
     TMUX_TEST_LOG="$LIST_LAUNCH_LOG" \
     "$LIST_POPUP" --open '%42' 'client-a' >/dev/null 2>&1 || true
 assert_contains 'list popup targets the triggering client and pane' "$LIST_LAUNCH_LOG" $'display-popup\t-EE\t-t\t%42\t-c\tclient-a'
-assert_contains 'list popup has native responsive chrome' "$LIST_LAUNCH_LOG" $'-T\tPending delayed sends\t-w\t80%\t-h\t70%\t-b\trounded'
+assert_contains 'list popup has native responsive chrome' "$LIST_LAUNCH_LOG" $'-T\tPending sends\t-w\t80%\t-h\t70%\t-b\trounded'
 
 POPUP_OPTIONS="$TEST_ROOT/popup-options"
 printf '%s\t%s\n' \
-    '@send-delayed-popup-width' '72%' \
-    '@send-delayed-popup-height' '14' \
-    '@send-delayed-list-popup-width' '88%' \
-    '@send-delayed-list-popup-height' '65%' \
-    '@send-delayed-popup-border-lines' 'double' > "$POPUP_OPTIONS"
+    '@send-later-popup-width' '72%' \
+    '@send-later-popup-height' '14' \
+    '@send-later-list-popup-width' '88%' \
+    '@send-later-list-popup-height' '65%' \
+    '@send-later-popup-border-lines' 'double' > "$POPUP_OPTIONS"
 CUSTOM_POPUP_LOG="$TEST_ROOT/custom-popup-tmux.log"
 env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
@@ -813,12 +813,12 @@ FORM_STATE="$TEST_ROOT/form-state"
 FORM_LOG="$TEST_ROOT/form-tmux.log"
 FORM_OUTPUT="$(printf '\nContinue\n30s\nnone\n\n' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$FORM_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$FORM_STATE" \
     TMUX_TEST_LOG="$FORM_LOG" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='work:1.0' \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='work:1.0' \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$SCHEDULE_POPUP" --form 2>&1)"
 assert_output 'plain form reports empty text inline' '1' bash -c "printf '%s' \"\$1\" | rg -F -q 'Text cannot be empty.' && printf 1" _ "$FORM_OUTPUT"
 assert_contains 'shows scheduling success to the triggering client' "$FORM_LOG" $'display-message\t-c\tclient-a\t-d\t3000\tScheduled in 30s -> work:1.0'
@@ -832,7 +832,7 @@ done
 if [ -n "$FORM_JOB" ]; then
     pass 'plain form schedules a validated job'
     assert_output 'none omits the trailing key' '' read_first_line "$FORM_STATE/jobs/$FORM_JOB/key"
-    env TMUX_SEND_DELAYED_STATE_DIR="$FORM_STATE" "$SCHEDULER" cancel "$FORM_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$FORM_STATE" "$SCHEDULER" cancel "$FORM_JOB" >/dev/null
 else
     fail 'plain form schedules a validated job'
 fi
@@ -841,17 +841,17 @@ FORMAT_STATE="$TEST_ROOT/format-state"
 FORMAT_LOG="$TEST_ROOT/format-tmux.log"
 printf 'Literal format target\n30s\nnone\n\n' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$FORMAT_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$FORMAT_STATE" \
     TMUX_TEST_LOG="$FORMAT_LOG" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='hash#{pane_id}:1.0' \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='hash#{pane_id}:1.0' \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$SCHEDULE_POPUP" --form >/dev/null 2>&1
 assert_contains 'keeps tmux formats literal in scheduling feedback' "$FORMAT_LOG" 'Scheduled in 30s -> hash##{pane_id}:1.0'
 for job_dir in "$FORMAT_STATE"/jobs/*; do
     [ -d "$job_dir" ] || continue
-    env TMUX_SEND_DELAYED_STATE_DIR="$FORMAT_STATE" "$SCHEDULER" cancel "${job_dir##*/}" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$FORMAT_STATE" "$SCHEDULER" cancel "${job_dir##*/}" >/dev/null
 done
 
 GUM_FORM_STATE="$TEST_ROOT/gum-form-state"
@@ -862,15 +862,15 @@ GUM_FORM_INPUT_INDEX="$TEST_ROOT/gum-form-input-index"
 printf '%s\n' 'Cancel with gum' '30s' 'Enter' > "$GUM_FORM_INPUTS"
 env \
     PATH="$ROOT_DIR/tests/fixtures-gum:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$GUM_FORM_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$GUM_FORM_STATE" \
     TMUX_TEST_LOG="$GUM_FORM_TMUX_LOG" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='work:1.0' \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='work:1.0' \
     GUM_TEST_LOG="$GUM_FORM_LOG" \
     GUM_TEST_INPUTS_FILE="$GUM_FORM_INPUTS" \
     GUM_TEST_INPUT_INDEX_FILE="$GUM_FORM_INPUT_INDEX" \
     GUM_TEST_CHOOSE_STATUS=130 \
-    SEND_DELAYED_FORCE_GUM=1 \
+    SEND_LATER_FORCE_GUM=1 \
     "$SCHEDULE_POPUP" --form >/dev/null 2>&1 || true
 assert_contains 'gum review uses an explicit schedule-or-edit choice' "$GUM_FORM_LOG" $'gum\tchoose'
 if [ ! -d "$GUM_FORM_STATE/jobs" ] || ! find "$GUM_FORM_STATE/jobs" -mindepth 1 -maxdepth 1 -type d | rg -q .; then
@@ -882,12 +882,12 @@ fi
 REVIEW_STATE="$TEST_ROOT/review-state"
 printf 'Do not send\n30s\nEnter\nn\n\033' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$REVIEW_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$REVIEW_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/review-tmux.log" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='work:1.0' \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='work:1.0' \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$SCHEDULE_POPUP" --form >/dev/null 2>&1 || true
 if [ ! -d "$REVIEW_STATE/jobs" ] || ! find "$REVIEW_STATE/jobs" -mindepth 1 -maxdepth 1 -type d | rg -q .; then
     pass 'declining the review does not schedule a job'
@@ -895,29 +895,29 @@ else
     fail 'declining the review does not schedule a job'
     for job_dir in "$REVIEW_STATE"/jobs/*; do
         [ -d "$job_dir" ] || continue
-        env TMUX_SEND_DELAYED_STATE_DIR="$REVIEW_STATE" "$SCHEDULER" cancel "${job_dir##*/}" >/dev/null
+        env TMUX_SEND_LATER_STATE_DIR="$REVIEW_STATE" "$SCHEDULER" cancel "${job_dir##*/}" >/dev/null
     done
 fi
 
 REVIEW_ESCAPE_STATE="$TEST_ROOT/review-escape-state"
 REVIEW_ESCAPE_OUTPUT="$(printf 'Cancel at review\n30s\nEnter\n\033' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$REVIEW_ESCAPE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$REVIEW_ESCAPE_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/review-escape-tmux.log" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='work:1.0' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='work:1.0' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$SCHEDULE_POPUP" --form 2>&1)"
 assert_output 'Escape closes directly from the review screen' '1' bash -c "printf '%s' \"\$1\" | rg -F -o 'Target  work:1.0' | wc -l | tr -d ' '" _ "$REVIEW_ESCAPE_OUTPUT"
 
 ESCAPE_STATE="$TEST_ROOT/escape-state"
 printf '\033' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$ESCAPE_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$ESCAPE_STATE" \
     TMUX_TEST_LOG="$TEST_ROOT/escape-tmux.log" \
-    TMUX_SEND_DELAYED_PANE_ID='%42' \
-    TMUX_SEND_DELAYED_DISPLAY_TARGET='work:1.0' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_PANE_ID='%42' \
+    TMUX_SEND_LATER_DISPLAY_TARGET='work:1.0' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$SCHEDULE_POPUP" --form >/dev/null 2>&1 || true
 if [ ! -d "$ESCAPE_STATE/jobs" ] || ! find "$ESCAPE_STATE/jobs" -mindepth 1 -maxdepth 1 -type d | rg -q .; then
     pass 'Escape closes the schedule form without creating a job'
@@ -929,12 +929,12 @@ LIST_STATE="$TEST_ROOT/list-state"
 LIST_LOG="$TEST_ROOT/list-tmux.log"
 LIST_JOB="$(schedule_test_job "$LIST_STATE" "$LIST_LOG" 1 30 'Review deployment')"
 PREVIEW_OUTPUT="$(env \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" \
     "$LIST_POPUP" --preview-job "$LIST_JOB" 2>&1 || true)"
 assert_output 'job preview shows complete scheduling details' '1' bash -c "printf '%s' \"\$1\" | rg -q 'Target.*work:1.0' && printf '%s' \"\$1\" | rg -q 'Pane.*%42' && printf '%s' \"\$1\" | rg -q 'Text.*Review deployment' && printf '%s' \"\$1\" | rg -q 'Backend.*background' && printf '%s' \"\$1\" | rg -q 'Job ID.*$LIST_JOB' && printf 1" _ "$PREVIEW_OUTPUT"
 CONTROL_JOB="$(schedule_test_job "$LIST_STATE" "$LIST_LOG" 1 30 $'Alert \033[31mred')"
 CONTROL_PREVIEW="$(env \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" \
     "$LIST_POPUP" --preview-job "$CONTROL_JOB" 2>&1 || true)"
 if [[ "$CONTROL_PREVIEW" != *$'\033'* ]] && [[ "$CONTROL_PREVIEW" == *'Alert '*'red'* ]]; then
     pass 'job preview strips terminal control characters'
@@ -942,33 +942,33 @@ else
     fail 'job preview strips terminal control characters'
 fi
 assert_fails 'job preview rejects unsafe job IDs' env \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" \
     "$LIST_POPUP" --preview-job '../outside'
 assert_fails 'job preview rejects parent-directory job IDs' env \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" \
     "$LIST_POPUP" --preview-job '..'
-env TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" "$SCHEDULER" cancel "$CONTROL_JOB" >/dev/null
+env TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" "$SCHEDULER" cancel "$CONTROL_JOB" >/dev/null
 LIST_OUTPUT="$(printf '1\ny\n\033' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" \
     TMUX_TEST_LOG="$LIST_LOG" \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$LIST_POPUP" --form 2>&1)"
 assert_output 'list popup shows target, text, and remaining time' '1' bash -c "printf '%s' \"\$1\" | rg -q 'work:1.0.*Review deployment.*[0-9].*[smhd]' && printf 1" _ "$LIST_OUTPUT"
-assert_contains 'shows cancellation success to the triggering client' "$LIST_LOG" $'display-message\t-c\tclient-a\t-d\t3000\tCancelled delayed send -> work:1.0'
+assert_contains 'shows cancellation success to the triggering client' "$LIST_LOG" $'display-message\t-c\tclient-a\t-d\t3000\tCancelled send -> work:1.0'
 if [ ! -d "$LIST_STATE/jobs/$LIST_JOB" ]; then
     pass 'list popup cancels the selected pending job'
 else
     fail 'list popup cancels the selected pending job'
-    env TMUX_SEND_DELAYED_STATE_DIR="$LIST_STATE" "$SCHEDULER" cancel "$LIST_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$LIST_STATE" "$SCHEDULER" cancel "$LIST_JOB" >/dev/null
 fi
 
 LIST_FORMAT_STATE="$TEST_ROOT/list-format-state"
 LIST_FORMAT_LOG="$TEST_ROOT/list-format-tmux.log"
 LIST_FORMAT_JOB="$(env \
     PATH="$FIXTURES_DIR:$PATH" \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_FORMAT_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_FORMAT_STATE" \
     TMUX_TEST_LOG="$LIST_FORMAT_LOG" \
     TMUX_TEST_TARGET_EXISTS=1 \
     "$SCHEDULER" schedule \
@@ -979,14 +979,14 @@ LIST_FORMAT_JOB="$(env \
         --delay 60)"
 printf '1\ny\n\033' | env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$LIST_FORMAT_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$LIST_FORMAT_STATE" \
     TMUX_TEST_LOG="$LIST_FORMAT_LOG" \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
-    SEND_DELAYED_FORCE_PLAIN=1 \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
+    SEND_LATER_FORCE_PLAIN=1 \
     "$LIST_POPUP" --form >/dev/null 2>&1
-assert_contains 'keeps tmux formats literal in cancellation feedback' "$LIST_FORMAT_LOG" 'Cancelled delayed send -> hash##{pane_id}:1.0'
+assert_contains 'keeps tmux formats literal in cancellation feedback' "$LIST_FORMAT_LOG" 'Cancelled send -> hash##{pane_id}:1.0'
 if [ -d "$LIST_FORMAT_STATE/jobs/$LIST_FORMAT_JOB" ]; then
-    env TMUX_SEND_DELAYED_STATE_DIR="$LIST_FORMAT_STATE" "$SCHEDULER" cancel "$LIST_FORMAT_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$LIST_FORMAT_STATE" "$SCHEDULER" cancel "$LIST_FORMAT_JOB" >/dev/null
 fi
 
 FZF_STATE="$TEST_ROOT/fzf-state"
@@ -999,7 +999,7 @@ FZF_DEFAULT_FILE="$TEST_ROOT/fzf-default-opts"
 printf '%s\n' '--height=40%' > "$FZF_DEFAULT_FILE"
 printf 'y\n' | env \
     PATH="$ROOT_DIR/tests/fixtures-fzf:$ROOT_DIR/tests/fixtures-gum:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$FZF_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$FZF_STATE" \
     TMUX_TEST_LOG="$FZF_TMUX_LOG" \
     FZF_TEST_LOG="$FZF_LOG" \
     FZF_TEST_MATCH='Second searchable job' \
@@ -1007,8 +1007,8 @@ printf 'y\n' | env \
     GUM_TEST_LOG="$FZF_GUM_LOG" \
     FZF_DEFAULT_OPTS='--tmux=center,90%' \
     FZF_DEFAULT_OPTS_FILE="$FZF_DEFAULT_FILE" \
-    SEND_DELAYED_FORCE_FZF=1 \
-    SEND_DELAYED_FORCE_GUM=1 \
+    SEND_LATER_FORCE_FZF=1 \
+    SEND_LATER_FORCE_GUM=1 \
     "$LIST_POPUP" --form >/dev/null 2>&1 || true
 assert_contains 'uses fzf for searchable pending jobs' "$FZF_LOG" $'fzf\t'
 assert_contains 'fzf exposes palette actions' "$FZF_LOG" '--expect=enter,ctrl-x,ctrl-r'
@@ -1022,7 +1022,7 @@ if [ -d "$FZF_STATE/jobs/$FZF_JOB_ONE" ] && [ ! -d "$FZF_STATE/jobs/$FZF_JOB_TWO
 else
     fail 'fzf cancels only the selected pending job'
 fi
-env TMUX_SEND_DELAYED_STATE_DIR="$FZF_STATE" "$SCHEDULER" cancel "$FZF_JOB_ONE" >/dev/null
+env TMUX_SEND_LATER_STATE_DIR="$FZF_STATE" "$SCHEDULER" cancel "$FZF_JOB_ONE" >/dev/null
 
 FZF_FALLBACK_STATE="$TEST_ROOT/fzf-fallback-state"
 FZF_FALLBACK_TMUX_LOG="$TEST_ROOT/fzf-fallback-tmux.log"
@@ -1031,21 +1031,21 @@ FZF_FALLBACK_GUM_LOG="$TEST_ROOT/fzf-fallback-gum.log"
 FZF_FALLBACK_JOB="$(schedule_test_job "$FZF_FALLBACK_STATE" "$FZF_FALLBACK_TMUX_LOG" 1 60 'Fallback to gum')"
 env \
     PATH="$ROOT_DIR/tests/fixtures-fzf:$ROOT_DIR/tests/fixtures-gum:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$FZF_FALLBACK_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$FZF_FALLBACK_STATE" \
     TMUX_TEST_LOG="$FZF_FALLBACK_TMUX_LOG" \
     FZF_TEST_LOG="$FZF_FALLBACK_LOG" \
     FZF_TEST_EXIT_STATUS=2 \
     GUM_TEST_LOG="$FZF_FALLBACK_GUM_LOG" \
     GUM_TEST_MATCH='Fallback to gum' \
-    SEND_DELAYED_FORCE_FZF=1 \
-    SEND_DELAYED_FORCE_GUM=1 \
+    SEND_LATER_FORCE_FZF=1 \
+    SEND_LATER_FORCE_GUM=1 \
     "$LIST_POPUP" --form >/dev/null 2>&1 || true
 assert_contains 'falls back to gum when fzf cannot start' "$FZF_FALLBACK_GUM_LOG" $'gum\tfilter'
 if [ ! -d "$FZF_FALLBACK_STATE/jobs/$FZF_FALLBACK_JOB" ]; then
     pass 'fallback selector cancels the selected pending job'
 else
     fail 'fallback selector cancels the selected pending job'
-    env TMUX_SEND_DELAYED_STATE_DIR="$FZF_FALLBACK_STATE" "$SCHEDULER" cancel "$FZF_FALLBACK_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$FZF_FALLBACK_STATE" "$SCHEDULER" cancel "$FZF_FALLBACK_JOB" >/dev/null
 fi
 
 RACE_STATE="$TEST_ROOT/race-state"
@@ -1054,18 +1054,18 @@ RACE_FZF_LOG="$TEST_ROOT/race-fzf.log"
 RACE_JOB="$(schedule_test_job "$RACE_STATE" "$RACE_TMUX_LOG" 1 60 'Completes while selected')"
 env \
     PATH="$ROOT_DIR/tests/fixtures-fzf:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$RACE_STATE" \
-    TMUX_SEND_DELAYED_CLIENT_NAME='client-a' \
+    TMUX_SEND_LATER_STATE_DIR="$RACE_STATE" \
+    TMUX_SEND_LATER_CLIENT_NAME='client-a' \
     TMUX_TEST_LOG="$RACE_TMUX_LOG" \
     FZF_TEST_LOG="$RACE_FZF_LOG" \
     FZF_TEST_MATCH='Completes while selected' \
     FZF_TEST_MOVE_SELECTED=1 \
-    SEND_DELAYED_FORCE_FZF=1 \
+    SEND_LATER_FORCE_FZF=1 \
     "$LIST_POPUP" --form >/dev/null 2>&1 || true
-assert_contains 'reports when a selected job is no longer pending' "$RACE_TMUX_LOG" $'display-message\t-c\tclient-a\t-d\t3000\tSelected delayed send is no longer pending'
+assert_contains 'reports when a selected job is no longer pending' "$RACE_TMUX_LOG" $'display-message\t-c\tclient-a\t-d\t3000\tSelected send is no longer pending'
 if [ -d "$RACE_STATE/running/$RACE_JOB" ]; then
     mv "$RACE_STATE/running/$RACE_JOB" "$RACE_STATE/jobs/$RACE_JOB"
-    env TMUX_SEND_DELAYED_STATE_DIR="$RACE_STATE" "$SCHEDULER" cancel "$RACE_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$RACE_STATE" "$SCHEDULER" cancel "$RACE_JOB" >/dev/null
 fi
 
 GUM_STATE="$TEST_ROOT/gum-state"
@@ -1074,29 +1074,29 @@ GUM_LOG="$TEST_ROOT/gum.log"
 GUM_JOB="$(schedule_test_job "$GUM_STATE" "$GUM_TMUX_LOG" 1 60 'Filter with gum')"
 env \
     PATH="$ROOT_DIR/tests/fixtures-gum:$FIXTURES_DIR:/usr/bin:/bin" \
-    TMUX_SEND_DELAYED_STATE_DIR="$GUM_STATE" \
+    TMUX_SEND_LATER_STATE_DIR="$GUM_STATE" \
     TMUX_TEST_LOG="$GUM_TMUX_LOG" \
     GUM_TEST_LOG="$GUM_LOG" \
     GUM_TEST_MATCH='Filter with gum' \
-    SEND_DELAYED_FORCE_GUM=1 \
+    SEND_LATER_FORCE_GUM=1 \
     "$LIST_POPUP" --form >/dev/null 2>&1 || true
 assert_contains 'uses gum filter when fzf is unavailable' "$GUM_LOG" $'gum\tfilter'
 if [ ! -d "$GUM_STATE/jobs/$GUM_JOB" ]; then
     pass 'gum filter cancels the selected pending job'
 else
     fail 'gum filter cancels the selected pending job'
-    env TMUX_SEND_DELAYED_STATE_DIR="$GUM_STATE" "$SCHEDULER" cancel "$GUM_JOB" >/dev/null
+    env TMUX_SEND_LATER_STATE_DIR="$GUM_STATE" "$SCHEDULER" cancel "$GUM_JOB" >/dev/null
 fi
 
 ENTRYPOINT_LOG="$TEST_ROOT/entrypoint-tmux.log"
 env PATH="$FIXTURES_DIR:/usr/bin:/bin" TMUX_TEST_LOG="$ENTRYPOINT_LOG" bash "$PLUGIN_ENTRYPOINT" >/dev/null 2>&1 || true
-assert_contains 'binds the requested default schedule key with a description' "$ENTRYPOINT_LOG" $'bind-key\t-N\tSchedule delayed pane input\tT\trun-shell\t-b'
-assert_contains 'binds a non-colliding default list key with a description' "$ENTRYPOINT_LOG" $'bind-key\t-N\tManage delayed pane input\tC-t\trun-shell\t-b'
+assert_contains 'binds the requested default schedule key with a description' "$ENTRYPOINT_LOG" $'bind-key\t-N\tSchedule pane input for later\tT\trun-shell\t-b'
+assert_contains 'binds a non-colliding default list key with a description' "$ENTRYPOINT_LOG" $'bind-key\t-N\tManage pending pane input\tC-t\trun-shell\t-b'
 assert_contains 'passes pane ID format expansion from the key binding' "$ENTRYPOINT_LOG" '#{pane_id}'
 assert_contains 'passes client format expansion from the key binding' "$ENTRYPOINT_LOG" '#{client_name}'
 
 DISABLED_SCHEDULE_OPTIONS="$TEST_ROOT/disabled-schedule-options"
-printf '%s\t%s\n' '@send-delayed-key' 'none' > "$DISABLED_SCHEDULE_OPTIONS"
+printf '%s\t%s\n' '@send-later-key' 'none' > "$DISABLED_SCHEDULE_OPTIONS"
 DISABLED_SCHEDULE_LOG="$TEST_ROOT/disabled-schedule.log"
 env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \
@@ -1107,7 +1107,7 @@ assert_not_contains 'can disable the schedule binding' "$DISABLED_SCHEDULE_LOG" 
 assert_contains 'keeps the list binding when schedule is disabled' "$DISABLED_SCHEDULE_LOG" 'popup-list.sh'
 
 DISABLED_LIST_OPTIONS="$TEST_ROOT/disabled-list-options"
-printf '%s\t%s\n' '@send-delayed-list-key' 'none' > "$DISABLED_LIST_OPTIONS"
+printf '%s\t%s\n' '@send-later-list-key' 'none' > "$DISABLED_LIST_OPTIONS"
 DISABLED_LIST_LOG="$TEST_ROOT/disabled-list.log"
 env \
     PATH="$FIXTURES_DIR:/usr/bin:/bin" \

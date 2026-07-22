@@ -12,8 +12,8 @@ Link the issue or explain why one is not needed.
 bash tests/test.sh
 bash tests/test-calver.sh
 bash tests/smoke-tmux.sh
-bash -n tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
-shellcheck tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+bash -n tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+shellcheck tmux-send-later.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
 ```
 
 List any manual tmux testing and the platforms exercised.

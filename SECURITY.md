@@ -11,7 +11,7 @@ Security fixes are provided for the latest release only.
 
 ## Report a vulnerability
 
-Use GitHub's [private vulnerability reporting](https://github.com/hongymagic/tmux-lagput/security/advisories/new).
+Use GitHub's [private vulnerability reporting](https://github.com/hongymagic/tmux-send-later/security/advisories/new).
 Do not disclose a suspected vulnerability in a public issue, discussion, or
 pull request.
 
@@ -24,9 +24,9 @@ reporter.
 
 ## Trust and data model
 
-tmux-lagput runs with the same user privileges as tmux. It deliberately sends
-the text you schedule into the captured pane, where a shell or application may
-interpret it; the default trailing `Enter` can execute a command. Review the
+tmux-send-later runs with the same user privileges as tmux. It deliberately
+sends the text you schedule into the captured pane, where a shell or application
+may interpret it; the default trailing `Enter` can execute a command. Review the
 target and text before submitting a job.
 
 The plugin has no sandbox or privilege boundary. It trusts tmux and the
@@ -34,8 +34,8 @@ executables it finds on `PATH`, including optional fzf, gum, setsid, and
 systemd tools. As with any tmux plugin, install only revisions you trust.
 
 Pending text, pane and socket identifiers, and job metadata are stored as
-plaintext under `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-lagput` by default.
-The history log is also plaintext. Newly created state uses a user-only
+plaintext under `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-send-later` by
+default. The history log is also plaintext. Newly created state uses a user-only
 `umask 077`, but users are responsible for securing a custom or pre-existing
 state directory and its backups. Do not schedule secrets if plaintext local
 storage is unacceptable.
