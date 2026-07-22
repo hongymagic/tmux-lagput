@@ -11,7 +11,9 @@ CAPTURE_FILE="$TEST_ROOT/captured.txt"
 MARKER="tmux-lagput-smoke-$$-${RANDOM:-0}"
 
 # Invoked through the EXIT trap.
-# shellcheck disable=SC2329
+# Older distro releases report trap-only functions as SC2317; newer releases
+# use SC2329 for the same indirect invocation.
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     if [ -x "$TMUX_BINARY" ]; then
         "$TMUX_BINARY" -L "$SOCKET_NAME" kill-server >/dev/null 2>&1 || true
