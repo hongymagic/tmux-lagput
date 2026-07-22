@@ -23,10 +23,21 @@ shell_quote() {
     printf "'%s'" "$value"
 }
 
+binding_enabled() {
+    case "$1" in
+        none|off) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 schedule_key="$(tmux_option '@send-delayed-key' 'T')"
 list_key="$(tmux_option '@send-delayed-list-key' 'C-t')"
-schedule_command="$(shell_quote "$CURRENT_DIR/scripts/popup-schedule.sh") --open '#{pane_id}'"
-list_command="$(shell_quote "$CURRENT_DIR/scripts/popup-list.sh") --open '#{pane_id}'"
+schedule_command="$(shell_quote "$CURRENT_DIR/scripts/popup-schedule.sh") --open '#{pane_id}' '#{client_name}'"
+list_command="$(shell_quote "$CURRENT_DIR/scripts/popup-list.sh") --open '#{pane_id}' '#{client_name}'"
 
-tmux bind-key "$schedule_key" run-shell "$schedule_command"
-tmux bind-key "$list_key" run-shell "$list_command"
+if binding_enabled "$schedule_key"; then
+    tmux bind-key -N 'Schedule delayed pane input' "$schedule_key" run-shell -b "$schedule_command"
+fi
+if binding_enabled "$list_key"; then
+    tmux bind-key -N 'Manage delayed pane input' "$list_key" run-shell -b "$list_command"
+fi

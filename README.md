@@ -1,6 +1,6 @@
 # tmux-lagput
 
-`tmux-lagput` adds a popup command palette for sending text to a tmux pane after a human-readable delay. It captures the pane that opened the popup, so changing focus before the timer expires does not change the destination.
+`tmux-lagput` adds a native popup for sending text to a tmux pane after a human-readable delay, plus a searchable palette for managing pending sends. It captures the pane and client that opened the popup, so changing focus before the timer expires does not change the destination.
 
 ## Install with TPM
 
@@ -10,7 +10,7 @@ Add the plugin to `~/.tmux.conf`:
 set -g @plugin 'hongymagic/tmux-lagput'
 ```
 
-Reload tmux, then press `prefix + I` to install it with [TPM](https://github.com/tmux-plugins/tpm). The plugin requires a tmux version with `display-popup` support and Bash. `gum` is optional.
+Reload tmux, then press `prefix + I` to install it with [TPM](https://github.com/tmux-plugins/tpm). The plugin requires tmux 3.3 or newer and Bash. `fzf` and `gum` are optional.
 
 ## Use
 
@@ -20,9 +20,11 @@ Press `prefix + T` to open the scheduling popup. Enter:
 2. A delay such as `90s`, `30m`, `5h`, or `1d2h`.
 3. A tmux key name to send afterwards. This defaults to `Enter`; enter `none` to send only the literal text.
 
-Empty text and invalid durations are reported in the popup without closing it. Press Esc at any field to cancel without creating a job.
+Review the target and values, then press Enter to schedule. Empty text and invalid durations are reported in the popup without closing it. Press Esc at any field to cancel without creating a job. A tmux status message confirms successful scheduling after the popup closes.
 
-Press `prefix + C-t` to list pending sends. Each row shows the captured `session:window.pane`, text, and remaining time. Choose a row to cancel it or press Esc to close the popup.
+Press `prefix + C-t` to manage pending sends. Each row shows the captured `session:window.pane`, text, and remaining time. The selected job includes a detailed preview with its immutable pane ID, exact run time, trailing key, backend, and job ID.
+
+With `fzf`, use `Enter` or `Ctrl-X` to select a job for confirmed cancellation, `Ctrl-R` to refresh, and Esc to close. With gum, filter and select a row before confirming cancellation. The plain interface uses a numbered list. Cancellation always requires confirmation.
 
 tmux represents uppercase `T` and Shift+T as the same key, so they cannot be separate defaults. The requested schedule key remains `T`; the list key therefore defaults to `C-t`. For a lowercase/uppercase pair, configure `t` and `T` explicitly.
 
@@ -37,6 +39,16 @@ set -g @send-delayed-key 't'
 # Open the pending-jobs popup with prefix + T.
 set -g @send-delayed-list-key 'T'
 
+# To disable either binding while keeping the other one:
+# set -g @send-delayed-list-key 'none'
+
+# Popup geometry and border shape.
+set -g @send-delayed-popup-width '70%'
+set -g @send-delayed-popup-height '16'
+set -g @send-delayed-list-popup-width '80%'
+set -g @send-delayed-list-popup-height '70%'
+set -g @send-delayed-popup-border-lines 'rounded'
+
 # Linux only: prefer persistent systemd user timers.
 set -g @send-delayed-use-systemd 'on'
 
@@ -46,14 +58,21 @@ set -g @send-delayed-state-dir '/home/me/.local/state/tmux-lagput'
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `@send-delayed-key` | `T` | Schedule-popup binding. |
-| `@send-delayed-list-key` | `C-t` | Pending-jobs popup binding. |
+| `@send-delayed-key` | `T` | Schedule-popup binding. Use `none` or `off` to disable it. |
+| `@send-delayed-list-key` | `C-t` | Pending-jobs popup binding. Use `none` or `off` to disable it. |
+| `@send-delayed-popup-width` | `70%` | Schedule-popup width accepted by tmux. |
+| `@send-delayed-popup-height` | `16` | Schedule-popup height accepted by tmux. |
+| `@send-delayed-list-popup-width` | `80%` | Pending-jobs popup width accepted by tmux. |
+| `@send-delayed-list-popup-height` | `70%` | Pending-jobs popup height accepted by tmux. |
+| `@send-delayed-popup-border-lines` | `rounded` | tmux popup border line style. Use `default` to inherit tmux's configured default. |
 | `@send-delayed-use-systemd` | `off` | Use a persistent systemd user timer when supported. Values `1`, `on`, `yes`, and `true` enable it. |
 | `@send-delayed-state-dir` | `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-lagput` | Job and history storage. Configure this as an absolute path. |
 
-## Optional gum interface
+## Optional interfaces
 
-If [`gum`](https://github.com/charmbracelet/gum) is on `PATH`, the plugin uses it for input and job selection. Without gum, the built-in Bash interface provides the same validation and Esc-to-cancel behaviour; no TUI framework is required.
+The scheduling form uses [`gum`](https://github.com/charmbracelet/gum) for polished inputs and confirmation when it is on `PATH`, otherwise it uses the built-in Bash form.
+
+The pending-jobs palette prefers [`fzf`](https://github.com/junegunn/fzf), then gum's fuzzy filter, then the numbered Bash interface. fzf runs inside the existing tmux popup rather than creating a nested popup; lagput supplies its layout instead of inheriting global fzf options. All three paths retain the same validation and confirmed-cancellation behaviour; no TUI dependency is required.
 
 ## Scheduling and state
 

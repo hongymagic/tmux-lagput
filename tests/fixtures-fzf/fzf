@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -u
+
+{
+    printf 'fzf'
+    for argument in "$@"; do
+        printf '\t%s' "$argument"
+    done
+    printf '\n'
+} >> "$FZF_TEST_LOG"
+printf 'environment\t%s\t%s\n' "${FZF_DEFAULT_OPTS:-}" "${FZF_DEFAULT_OPTS_FILE:-}" >> "$FZF_TEST_LOG"
+
+if [ "${FZF_TEST_EXIT_STATUS:-0}" -ne 0 ]; then
+    exit "$FZF_TEST_EXIT_STATUS"
+fi
+
+selection=''
+while IFS= read -r row; do
+    if [ -z "$selection" ] && [[ "$row" == *"${FZF_TEST_MATCH:-}"* ]]; then
+        selection="$row"
+    fi
+done
+
+[ -n "$selection" ] || exit 1
+if [ "${FZF_TEST_MOVE_SELECTED:-0}" = '1' ]; then
+    selected_job_id="${selection%%$'\t'*}"
+    mv "$TMUX_SEND_DELAYED_STATE_DIR/jobs/$selected_job_id" "$TMUX_SEND_DELAYED_STATE_DIR/running/$selected_job_id"
+fi
+printf '%s\n%s\n' "${FZF_TEST_ACTION:-enter}" "$selection"

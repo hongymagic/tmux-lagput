@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -u
+
+command_name="${1:-}"
+shift || true
+
+{
+    printf 'gum\t%s' "$command_name"
+    for argument in "$@"; do
+        printf '\t%s' "$argument"
+    done
+    printf '\n'
+} >> "$GUM_TEST_LOG"
+
+case "$command_name" in
+    input)
+        input_index=1
+        if [ -f "${GUM_TEST_INPUT_INDEX_FILE:-}" ]; then
+            IFS= read -r input_index < "$GUM_TEST_INPUT_INDEX_FILE" || true
+        fi
+        sed -n "${input_index}p" "$GUM_TEST_INPUTS_FILE"
+        printf '%s\n' "$((input_index + 1))" > "$GUM_TEST_INPUT_INDEX_FILE"
+        ;;
+    choose)
+        if [ "${GUM_TEST_CHOOSE_STATUS:-0}" -ne 0 ]; then
+            exit "$GUM_TEST_CHOOSE_STATUS"
+        fi
+        printf '%s\n' "${GUM_TEST_CHOICE:-Schedule}"
+        ;;
+    filter)
+        selection=''
+        while IFS= read -r row; do
+            if [ -z "$selection" ] && [[ "$row" == *"${GUM_TEST_MATCH:-}"* ]]; then
+                selection="$row"
+            fi
+        done
+        [ -n "$selection" ] || exit 1
+        printf '%s\n' "$selection"
+        ;;
+    confirm)
+        exit "${GUM_TEST_CONFIRM_STATUS:-0}"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

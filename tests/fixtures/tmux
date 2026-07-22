@@ -2,15 +2,48 @@
 
 set -u
 
+log_command() {
+    {
+        printf '%s' "$1"
+        shift
+        for argument in "$@"; do
+            printf '\t%s' "$argument"
+        done
+        printf '\n'
+    } >> "$TMUX_TEST_LOG"
+}
+
+has_argument() {
+    local expected="$1"
+    shift
+    local argument
+
+    for argument in "$@"; do
+        if [ "$argument" = "$expected" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 case "${1:-}" in
     display-message)
-        if [ "${TMUX_TEST_TARGET_EXISTS:-1}" != '1' ]; then
-            exit 1
-        fi
-        if [ "${*: -1}" = '#{pane_id}' ]; then
-            printf '%s\n' "${TMUX_TEST_PANE_ID:-%42}"
+        command_name="$1"
+        shift
+        if has_argument '-p' "$@"; then
+            if [ "${TMUX_TEST_LOG_PRINT_MESSAGES:-0}" = '1' ]; then
+                log_command "$command_name" "$@"
+            fi
+            if [ "${TMUX_TEST_TARGET_EXISTS:-1}" != '1' ]; then
+                exit 1
+            fi
+            if [ "${*: -1}" = '#{pane_id}' ]; then
+                printf '%s\n' "${TMUX_TEST_PANE_ID:-%42}"
+            else
+                printf '%s\n' "${TMUX_TEST_DISPLAY_TARGET:-work:1.0}"
+            fi
         else
-            printf '%s\n' "${TMUX_TEST_DISPLAY_TARGET:-work:1.0}"
+            log_command "$command_name" "$@"
         fi
         ;;
     send-keys)
@@ -24,17 +57,21 @@ case "${1:-}" in
         } >> "$TMUX_TEST_LOG"
         ;;
     show-option)
-        exit 0
+        option_name="${*: -1}"
+        if [ -f "${TMUX_TEST_OPTIONS_FILE:-}" ]; then
+            while IFS=$'\t' read -r configured_name configured_value; do
+                if [ "$configured_name" = "$option_name" ]; then
+                    printf '%s\n' "$configured_value"
+                    exit 0
+                fi
+            done < "$TMUX_TEST_OPTIONS_FILE"
+        fi
+        exit 1
         ;;
     display-popup|bind-key)
-        {
-            printf '%s' "$1"
-            shift
-            for argument in "$@"; do
-                printf '\t%s' "$argument"
-            done
-            printf '\n'
-        } >> "$TMUX_TEST_LOG"
+        command_name="$1"
+        shift
+        log_command "$command_name" "$@"
         ;;
     *)
         exit 0

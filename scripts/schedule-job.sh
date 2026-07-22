@@ -79,6 +79,9 @@ append_history() {
 }
 
 valid_job_id() {
+    case "$1" in
+        .|..) return 1 ;;
+    esac
     [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
