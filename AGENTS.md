@@ -12,8 +12,11 @@ state management.
 - `scripts/popup-schedule.sh` captures the triggering pane and renders the form.
 - `scripts/popup-list.sh` lists and cancels pending jobs.
 - `scripts/schedule-job.sh` persists, executes, and cancels scheduled jobs.
+- `scripts/calver.sh` and `scripts/release.sh` implement UTC CalVer releases.
+- `scripts/cleanup.sh` safely stops pending jobs before uninstalling.
 - `scripts/parse-duration.sh` parses human-readable delays.
-- `tests/test.sh` is the dependency-free behavioural test suite.
+- `tests/test.sh` and `tests/test-calver.sh` are the behavioural test suites.
+- `tests/smoke-tmux.sh` verifies the plugin against a real tmux server.
 - `tests/fixtures*/` contains fake tmux, platform, fzf, and gum commands used by the tests.
 
 ## Development
@@ -39,8 +42,10 @@ Run before committing:
 
 ```sh
 bash tests/test.sh
-bash -n tmux-lagput.tmux scripts/*.sh tests/test.sh tests/fixtures/* tests/fixtures-*/*
-shellcheck tmux-lagput.tmux scripts/*.sh tests/test.sh tests/fixtures/* tests/fixtures-*/*
+bash tests/test-calver.sh
+bash tests/smoke-tmux.sh
+bash -n tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
+shellcheck tmux-lagput.tmux scripts/*.sh tests/*.sh tests/fixtures/* tests/fixtures-*/*
 ```
 
 Use conventional, imperative commit messages. Do not commit secrets, local tmux

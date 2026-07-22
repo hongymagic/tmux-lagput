@@ -1,0 +1,110 @@
+---
+name: Bug report
+description: Report reproducible incorrect behaviour in tmux-lagput
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. For security issues, use
+        the private process in SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: Provide the release version or full Git commit.
+      placeholder: >-
+        2026.0722.0 or 61d80a9353ba9513abf6cfefdc261cd1fb7f2027
+    validations:
+      required: true
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: tmux_version
+    attributes:
+      label: tmux version
+      description: Paste the output of `tmux -V`.
+      placeholder: tmux 3.5a
+    validations:
+      required: true
+  - type: input
+    id: bash_version
+    attributes:
+      label: Bash version
+      description: Paste the first line of `bash --version`.
+      placeholder: GNU bash, version 3.2.57
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Interface in use
+      options:
+        - Plain Bash
+        - fzf
+        - gum
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Scheduling backend
+      options:
+        - Background process
+        - systemd user timer
+        - Not sure or not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: >-
+        Use harmless sample text and include the smallest reliable sequence.
+      placeholder: |
+        1. Open the schedule popup with prefix + T.
+        2. Enter harmless sample text and a delay.
+        3. Submit the form.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Relevant diagnostics
+      description: >-
+        Redact scheduled text, terminal contents, socket paths, usernames,
+        hostnames, and secrets.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: >-
+            This report does not disclose a security vulnerability or
+            sensitive local data.
+          required: true

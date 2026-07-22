@@ -7,6 +7,7 @@ PARSER="$ROOT_DIR/scripts/parse-duration.sh"
 SCHEDULER="$ROOT_DIR/scripts/schedule-job.sh"
 SCHEDULE_POPUP="$ROOT_DIR/scripts/popup-schedule.sh"
 LIST_POPUP="$ROOT_DIR/scripts/popup-list.sh"
+CLEANUP_SCRIPT="$ROOT_DIR/scripts/cleanup.sh"
 PLUGIN_ENTRYPOINT="$ROOT_DIR/tmux-lagput.tmux"
 FIXTURES_DIR="$ROOT_DIR/tests/fixtures"
 PASSED=0
@@ -121,6 +122,35 @@ read_first_line() {
     printf '%s' "$value"
 }
 
+process_is_running() {
+    local process_id="$1"
+    local process_state
+
+    if ! kill -0 "$process_id" 2>/dev/null; then
+        return 1
+    fi
+    process_state="$(ps -p "$process_id" -o stat= 2>/dev/null || true)"
+    case "$process_state" in
+        *Z*) return 1 ;;
+    esac
+    return 0
+}
+
+wait_for_process_exit() {
+    local process_id="$1"
+    local attempts=30
+
+    while [ "$attempts" -gt 0 ]; do
+        if ! process_is_running "$process_id"; then
+            return 0
+        fi
+        attempts=$((attempts - 1))
+        sleep 0.1
+    done
+
+    return 1
+}
+
 schedule_test_job() {
     local state_dir="$1"
     local log_file="$2"
@@ -153,6 +183,33 @@ assert_fails 'rejects a zero duration' "$PARSER" '0s'
 assert_fails 'rejects a unitless duration' "$PARSER" '30'
 assert_fails 'rejects malformed duration text' "$PARSER" '1h later'
 
+LAUNCH_FAILURE_STATE="$TEST_ROOT/launch-failure-state"
+LAUNCH_FAILURE_OUTPUT=''
+if LAUNCH_FAILURE_OUTPUT="$(env \
+    PATH="$ROOT_DIR/tests/fixtures-launch-failure:$FIXTURES_DIR:/usr/bin:/bin" \
+    TMUX_SEND_DELAYED_STATE_DIR="$LAUNCH_FAILURE_STATE" \
+    TMUX_TEST_LOG="$TEST_ROOT/launch-failure-tmux.log" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Must not publish' \
+        --key 'Enter' \
+        --delay 60 2>/dev/null)"; then
+    fail 'returns nonzero when the detached worker cannot launch'
+else
+    pass 'returns nonzero when the detached worker cannot launch'
+fi
+if [ -z "$LAUNCH_FAILURE_OUTPUT" ]; then
+    pass 'does not print a job ID when the detached worker cannot launch'
+else
+    fail 'does not print a job ID when the detached worker cannot launch' "unexpected output: $LAUNCH_FAILURE_OUTPUT"
+fi
+if [ ! -d "$LAUNCH_FAILURE_STATE/jobs" ] || ! find "$LAUNCH_FAILURE_STATE/jobs" -mindepth 1 -maxdepth 1 -type d | rg -q .; then
+    pass 'does not publish a pending job when the detached worker cannot launch'
+else
+    fail 'does not publish a pending job when the detached worker cannot launch'
+fi
+
 SUCCESS_STATE="$TEST_ROOT/success-state"
 SUCCESS_LOG="$TEST_ROOT/success-tmux.log"
 SUCCESS_JOB="$(schedule_test_job "$SUCCESS_STATE" "$SUCCESS_LOG" 1 1 'Continue -- safely')"
@@ -162,7 +219,7 @@ else
     fail 'background worker records successful delivery' 'timed out waiting for sent history'
 fi
 assert_contains 'sends text literally to the captured pane ID' "$SUCCESS_LOG" $'send-keys\t-t\t%42\t-l\t--\tContinue -- safely'
-assert_contains 'sends the configured key to the captured pane ID' "$SUCCESS_LOG" $'send-keys\t-t\t%42\tEnter'
+assert_contains 'sends the configured key to the captured pane ID' "$SUCCESS_LOG" $'send-keys\t-t\t%42\t--\tEnter'
 if [ ! -d "$SUCCESS_STATE/jobs/$SUCCESS_JOB" ]; then
     pass 'removes a completed job from pending state'
 else
@@ -234,6 +291,72 @@ fi
 sleep 2.2
 assert_not_contains 'cancelled jobs never send text' "$CANCEL_LOG" 'send-keys'
 
+RECONCILE_STATE="$TEST_ROOT/reconcile-state"
+RECONCILE_STALE_JOB='stale-running-job'
+RECONCILE_FRESH_JOB='fresh-running-job'
+RECONCILE_STAGING_JOB='stale-staging-job'
+RECONCILE_STALE_DIR="$RECONCILE_STATE/running/$RECONCILE_STALE_JOB"
+RECONCILE_FRESH_DIR="$RECONCILE_STATE/running/$RECONCILE_FRESH_JOB"
+RECONCILE_STAGING_DIR="$RECONCILE_STATE/staging/$RECONCILE_STAGING_JOB"
+mkdir -p "$RECONCILE_STALE_DIR" "$RECONCILE_FRESH_DIR" "$RECONCILE_STAGING_DIR"
+NOW_EPOCH="$(date +%s)"
+bash -c 'trap "exit 0" TERM INT; while :; do sleep 1; done' \
+    "$SCHEDULER" --run-staged "$RECONCILE_STATE" "$RECONCILE_STALE_JOB" &
+RECONCILE_STALE_PID=$!
+bash -c 'trap "exit 0" TERM INT; while :; do sleep 1; done' \
+    "$SCHEDULER" --run-staged "$RECONCILE_STATE" "$RECONCILE_FRESH_JOB" &
+RECONCILE_FRESH_PID=$!
+bash -c 'trap "exit 0" TERM INT; while :; do sleep 1; done' \
+    "$SCHEDULER" --run-staged "$RECONCILE_STATE" "$RECONCILE_STAGING_JOB" 'staging-token' &
+RECONCILE_STAGING_PID=$!
+printf '%s\n' "$((NOW_EPOCH - 600))" > "$RECONCILE_STALE_DIR/claimed-at"
+printf '%s\n' "$RECONCILE_STALE_PID" > "$RECONCILE_STALE_DIR/worker-pid"
+printf '%s\n' 'background' > "$RECONCILE_STALE_DIR/backend"
+printf '%s\n' 'work:1.0' > "$RECONCILE_STALE_DIR/display-target"
+printf '%s\n' "$NOW_EPOCH" > "$RECONCILE_FRESH_DIR/claimed-at"
+printf '%s\n' "$RECONCILE_FRESH_PID" > "$RECONCILE_FRESH_DIR/worker-pid"
+printf '%s\n' 'background' > "$RECONCILE_FRESH_DIR/backend"
+printf '%s\n' 'work:1.1' > "$RECONCILE_FRESH_DIR/display-target"
+printf '%s\n' "$((NOW_EPOCH - 600))" > "$RECONCILE_STAGING_DIR/created-at"
+printf '%s\n' "$RECONCILE_STAGING_PID" > "$RECONCILE_STAGING_DIR/worker-pid"
+printf '%s\n' 'staging-token' > "$RECONCILE_STAGING_DIR/worker-token"
+printf '%s\n' 'background' > "$RECONCILE_STAGING_DIR/backend"
+printf '%s\n' 'work:1.2' > "$RECONCILE_STAGING_DIR/display-target"
+if env TMUX_SEND_DELAYED_STATE_DIR="$RECONCILE_STATE" \
+    "$SCHEDULER" reconcile --older-than 300 >/dev/null 2>&1; then
+    pass 'reconciles claimed jobs older than the configured threshold'
+else
+    fail 'reconciles claimed jobs older than the configured threshold'
+fi
+if [ ! -d "$RECONCILE_STALE_DIR" ]; then
+    pass 'removes a stale claimed job without requeueing it'
+else
+    fail 'removes a stale claimed job without requeueing it'
+fi
+if wait_for_process_exit "$RECONCILE_STALE_PID"; then
+    pass 'stops the exact worker for a stale claimed job'
+else
+    fail 'stops the exact worker for a stale claimed job' "worker $RECONCILE_STALE_PID is still running"
+fi
+assert_contains 'records an unknown-delivery failure for a stale claimed job' \
+    "$RECONCILE_STATE/jobs-history.log" $'\tstale-running-job\tfailed\twork:1.0\tdelivery outcome is unknown'
+if [ -d "$RECONCILE_FRESH_DIR" ] && process_is_running "$RECONCILE_FRESH_PID"; then
+    pass 'leaves a fresh claimed job and its worker untouched'
+else
+    fail 'leaves a fresh claimed job and its worker untouched'
+fi
+if [ ! -d "$RECONCILE_STAGING_DIR" ] && wait_for_process_exit "$RECONCILE_STAGING_PID"; then
+    pass 'reconciles stale unpublished jobs and their workers'
+else
+    fail 'reconciles stale unpublished jobs and their workers'
+fi
+assert_contains 'records a stale unpublished scheduling failure' \
+    "$RECONCILE_STATE/jobs-history.log" $'\tstale-staging-job\tfailed\twork:1.2\tscheduling did not complete'
+kill -TERM "$RECONCILE_STALE_PID" "$RECONCILE_FRESH_PID" "$RECONCILE_STAGING_PID" 2>/dev/null || true
+wait "$RECONCILE_STALE_PID" 2>/dev/null || true
+wait "$RECONCILE_FRESH_PID" 2>/dev/null || true
+wait "$RECONCILE_STAGING_PID" 2>/dev/null || true
+
 DOT_JOB_ERROR="$(env \
     TMUX_SEND_DELAYED_STATE_DIR="$TEST_ROOT/dot-job-state" \
     "$SCHEDULER" cancel '..' 2>&1 || true)"
@@ -276,6 +399,156 @@ else
     fail 'removes systemd unit files when a job is cancelled'
 fi
 
+SYSTEMD_FAILURE_STATE="$TEST_ROOT/systemd-failure-state"
+SYSTEMD_FAILURE_CONFIG="$TEST_ROOT/systemd-failure-config"
+SYSTEMD_FAILURE_LOG="$TEST_ROOT/systemd-failure-systemctl.log"
+SYSTEMD_FAILURE_JOB="$(env \
+    PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    TMUX_TEST_LOG="$TEST_ROOT/systemd-failure-tmux.log" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_FAILURE_LOG" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Retain failed teardown' \
+        --key 'Enter' \
+        --delay 120 \
+        --use-systemd)"
+SYSTEMD_FAILURE_TIMER="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_FAILURE_JOB.timer"
+SYSTEMD_FAILURE_SERVICE="$SYSTEMD_FAILURE_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_FAILURE_JOB.service"
+if env \
+    PATH="$ROOT_DIR/tests/fixtures-systemctl-failure:$FIXTURES_DIR:/usr/bin:/bin" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    "$SCHEDULER" cancel "$SYSTEMD_FAILURE_JOB" >/dev/null 2>&1; then
+    fail 'cancellation fails closed when systemd teardown fails'
+else
+    pass 'cancellation fails closed when systemd teardown fails'
+fi
+if [ -d "$SYSTEMD_FAILURE_STATE/cancelled/$SYSTEMD_FAILURE_JOB" ]; then
+    pass 'failed systemd teardown retains quarantined job metadata'
+else
+    fail 'failed systemd teardown retains quarantined job metadata'
+fi
+if [ -f "$SYSTEMD_FAILURE_TIMER" ] && [ -f "$SYSTEMD_FAILURE_SERVICE" ]; then
+    pass 'failed systemd teardown retains unit files for retry'
+else
+    fail 'failed systemd teardown retains unit files for retry'
+fi
+env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_FAILURE_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_FAILURE_STATE" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_FAILURE_LOG" \
+    "$CLEANUP_SCRIPT" >/dev/null
+if [ ! -d "$SYSTEMD_FAILURE_STATE/cancelled/$SYSTEMD_FAILURE_JOB" ] && \
+    [ ! -e "$SYSTEMD_FAILURE_TIMER" ] && [ ! -e "$SYSTEMD_FAILURE_SERVICE" ]; then
+    pass 'cleanup retries and completes a quarantined systemd teardown'
+else
+    fail 'cleanup retries and completes a quarantined systemd teardown'
+fi
+
+SYSTEMD_AMBIGUOUS_STATE="$TEST_ROOT/systemd-ambiguous-state"
+SYSTEMD_AMBIGUOUS_CONFIG="$TEST_ROOT/systemd-ambiguous-config"
+SYSTEMD_AMBIGUOUS_LOG="$TEST_ROOT/systemd-ambiguous-systemctl.log"
+SYSTEMD_AMBIGUOUS_JOB="$(env \
+    PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    TMUX_TEST_LOG="$TEST_ROOT/systemd-ambiguous-tmux.log" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_AMBIGUOUS_LOG" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Do not lose ambiguous teardown' \
+        --key 'Enter' \
+        --delay 120 \
+        --use-systemd)"
+SYSTEMD_AMBIGUOUS_TIMER="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_AMBIGUOUS_JOB.timer"
+SYSTEMD_AMBIGUOUS_SERVICE="$SYSTEMD_AMBIGUOUS_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_AMBIGUOUS_JOB.service"
+if env \
+    PATH="$ROOT_DIR/tests/fixtures-systemctl-ambiguous:$FIXTURES_DIR:/usr/bin:/bin" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    "$SCHEDULER" cancel "$SYSTEMD_AMBIGUOUS_JOB" >/dev/null 2>&1; then
+    fail 'cancellation fails closed when systemd state is ambiguous'
+else
+    pass 'cancellation fails closed when systemd state is ambiguous'
+fi
+if [ -d "$SYSTEMD_AMBIGUOUS_STATE/cancelled/$SYSTEMD_AMBIGUOUS_JOB" ]; then
+    pass 'ambiguous systemd teardown retains quarantined metadata'
+else
+    fail 'ambiguous systemd teardown retains quarantined metadata'
+fi
+if [ -f "$SYSTEMD_AMBIGUOUS_TIMER" ] && [ -f "$SYSTEMD_AMBIGUOUS_SERVICE" ]; then
+    pass 'ambiguous systemd teardown retains unit files'
+else
+    fail 'ambiguous systemd teardown retains unit files'
+fi
+env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_AMBIGUOUS_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_AMBIGUOUS_STATE" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_AMBIGUOUS_LOG" \
+    "$CLEANUP_SCRIPT" >/dev/null
+
+SYSTEMD_PUBLISH_STATE="$TEST_ROOT/systemd-publish-state"
+SYSTEMD_PUBLISH_CONFIG="$TEST_ROOT/systemd-publish-config"
+SYSTEMD_PUBLISH_LOG="$TEST_ROOT/systemd-publish-systemctl.log"
+SYSTEMD_PUBLISH_JOB_FILE="$TEST_ROOT/systemd-publish-job-id"
+if env \
+    PATH="$ROOT_DIR/tests/fixtures-systemctl-publish-failure:$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:/usr/bin:/bin" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_PUBLISH_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
+    TMUX_TEST_LOG="$TEST_ROOT/systemd-publish-tmux.log" \
+    SYSTEMCTL_PUBLISH_JOB_FILE="$SYSTEMD_PUBLISH_JOB_FILE" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Retain failed publication' \
+        --key 'Enter' \
+        --delay 120 \
+        --use-systemd >/dev/null 2>&1; then
+    fail 'scheduling fails when an armed systemd job cannot be published'
+else
+    pass 'scheduling fails when an armed systemd job cannot be published'
+fi
+SYSTEMD_PUBLISH_JOB="$(read_first_line "$SYSTEMD_PUBLISH_JOB_FILE")"
+SYSTEMD_PUBLISH_TIMER="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_PUBLISH_JOB.timer"
+SYSTEMD_PUBLISH_SERVICE="$SYSTEMD_PUBLISH_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_PUBLISH_JOB.service"
+if [ -d "$SYSTEMD_PUBLISH_STATE/staging/$SYSTEMD_PUBLISH_JOB" ] || \
+    [ -d "$SYSTEMD_PUBLISH_STATE/abandoned/$SYSTEMD_PUBLISH_JOB" ]; then
+    pass 'failed publication retains systemd job metadata for cleanup'
+else
+    fail 'failed publication retains systemd job metadata for cleanup'
+fi
+if [ -f "$SYSTEMD_PUBLISH_TIMER" ] && [ -f "$SYSTEMD_PUBLISH_SERVICE" ]; then
+    pass 'failed publication retains armed systemd unit files for cleanup'
+else
+    fail 'failed publication retains armed systemd unit files for cleanup'
+fi
+rm -f -- "$SYSTEMD_PUBLISH_STATE/jobs/$SYSTEMD_PUBLISH_JOB"
+env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_PUBLISH_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_PUBLISH_STATE" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_PUBLISH_LOG" \
+    "$CLEANUP_SCRIPT" >/dev/null
+if [ ! -e "$SYSTEMD_PUBLISH_TIMER" ] && [ ! -e "$SYSTEMD_PUBLISH_SERVICE" ]; then
+    pass 'cleanup completes retained publication teardown'
+else
+    fail 'cleanup completes retained publication teardown'
+fi
+
 DARWIN_STATE="$TEST_ROOT/darwin-state"
 DARWIN_JOB="$(env \
     PATH="$ROOT_DIR/tests/fixtures-darwin:$FIXTURES_DIR:$PATH" \
@@ -292,6 +565,148 @@ DARWIN_JOB="$(env \
         --use-systemd)"
 assert_contains 'falls back to a background worker on macOS' "$DARWIN_STATE/jobs/$DARWIN_JOB/backend" 'background'
 env TMUX_SEND_DELAYED_STATE_DIR="$DARWIN_STATE" "$SCHEDULER" cancel "$DARWIN_JOB" >/dev/null
+
+CLEANUP_STATE="$TEST_ROOT/cleanup-state"
+CLEANUP_LOG="$TEST_ROOT/cleanup-tmux.log"
+CLEANUP_SYSTEMD_LOG="$TEST_ROOT/cleanup-systemctl.log"
+CLEANUP_CONFIG="$TEST_ROOT/cleanup-config"
+CLEANUP_BACKGROUND_JOB="$(schedule_test_job "$CLEANUP_STATE" "$CLEANUP_LOG" 1 120 'Background cleanup')"
+CLEANUP_BACKGROUND_PID="$(read_first_line "$CLEANUP_STATE/jobs/$CLEANUP_BACKGROUND_JOB/worker-pid")"
+CLEANUP_SYSTEMD_JOB="$(env \
+    PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_TEST_LOG="$CLEANUP_LOG" \
+    SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.1' \
+        --text 'Systemd cleanup' \
+        --key 'Enter' \
+        --delay 120 \
+        --use-systemd)"
+CLEANUP_TIMER="$CLEANUP_CONFIG/systemd/user/tmux-lagput-$CLEANUP_SYSTEMD_JOB.timer"
+CLEANUP_SERVICE="$CLEANUP_CONFIG/systemd/user/tmux-lagput-$CLEANUP_SYSTEMD_JOB.service"
+CLEANUP_RUNNING_JOB='cleanup-running-job'
+CLEANUP_STAGING_JOB='cleanup-staging-job'
+CLEANUP_CANCELLED_JOB='cleanup-cancelled-job'
+CLEANUP_INCOMPLETE_JOB='cleanup-incomplete-job'
+CLEANUP_FINISHING_JOB='cleanup-finishing-job'
+CLEANUP_ABANDONED_JOB='cleanup-abandoned-job'
+mkdir -p \
+    "$CLEANUP_STATE/running/$CLEANUP_RUNNING_JOB" \
+    "$CLEANUP_STATE/staging/$CLEANUP_STAGING_JOB" \
+    "$CLEANUP_STATE/cancelled/$CLEANUP_CANCELLED_JOB" \
+    "$CLEANUP_STATE/cancelled/$CLEANUP_INCOMPLETE_JOB" \
+    "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB" \
+    "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB"
+printf '%s\n' "$((NOW_EPOCH - 600))" > "$CLEANUP_STATE/running/$CLEANUP_RUNNING_JOB/claimed-at"
+printf '%s\n' 'work:1.2' > "$CLEANUP_STATE/running/$CLEANUP_RUNNING_JOB/display-target"
+printf '%s\n' 'work:1.3' > "$CLEANUP_STATE/cancelled/$CLEANUP_CANCELLED_JOB/display-target"
+printf '%s\n' 'cancelled' > "$CLEANUP_STATE/cancelled/$CLEANUP_CANCELLED_JOB/terminal-status"
+printf '%s\n' 'cancelled during cleanup' > "$CLEANUP_STATE/cancelled/$CLEANUP_CANCELLED_JOB/terminal-detail"
+printf '%s\n' 'work:1.6' > "$CLEANUP_STATE/cancelled/$CLEANUP_INCOMPLETE_JOB/display-target"
+printf '%s\n' 'work:1.4' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/display-target"
+printf '%s\n' 'sent' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/terminal-status"
+printf '%s\n' 'delayed input delivered' > "$CLEANUP_STATE/finishing/$CLEANUP_FINISHING_JOB/terminal-detail"
+printf '%s\n' 'work:1.5' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/display-target"
+printf '%s\n' 'failed' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/terminal-status"
+printf '%s\n' 'delivery outcome is unknown' > "$CLEANUP_STATE/abandoned/$CLEANUP_ABANDONED_JOB/terminal-detail"
+printf '%s\n' $'2026-01-01T00:00:00Z\tprior-job\tfailed\twork:1.9\tprior failure retained' > "$CLEANUP_STATE/jobs-history.log"
+if env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
+    "$CLEANUP_SCRIPT" >/dev/null 2>&1; then
+    pass 'cleanup command completes successfully'
+else
+    fail 'cleanup command completes successfully'
+fi
+if wait_for_process_exit "$CLEANUP_BACKGROUND_PID"; then
+    pass 'cleanup stops pending background workers'
+else
+    fail 'cleanup stops pending background workers' "worker $CLEANUP_BACKGROUND_PID is still running"
+fi
+assert_contains 'cleanup disables pending systemd timers' "$CLEANUP_SYSTEMD_LOG" \
+    $'--user\tdisable\t--now\ttmux-lagput-'"$CLEANUP_SYSTEMD_JOB"'.timer'
+if [ ! -e "$CLEANUP_TIMER" ] && [ ! -e "$CLEANUP_SERVICE" ]; then
+    pass 'cleanup removes generated systemd unit files'
+else
+    fail 'cleanup removes generated systemd unit files'
+fi
+for cleanup_directory in jobs running staging cancelled finishing abandoned; do
+    if [ -d "$CLEANUP_STATE/$cleanup_directory" ] && \
+        ! find "$CLEANUP_STATE/$cleanup_directory" -mindepth 1 -maxdepth 1 | rg -q .; then
+        pass "cleanup leaves $cleanup_directory state empty"
+    else
+        fail "cleanup leaves $cleanup_directory state empty"
+    fi
+done
+if [ -d "$CLEANUP_STATE" ]; then
+    pass 'cleanup retains the state directory'
+else
+    fail 'cleanup retains the state directory'
+fi
+assert_contains 'cleanup retains existing history' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tprior-job\tfailed\twork:1.9\tprior failure retained'
+assert_contains 'cleanup records background job cancellation' "$CLEANUP_STATE/jobs-history.log" \
+    $'\t'"$CLEANUP_BACKGROUND_JOB"$'\tcancelled\twork:1.0\t'
+assert_contains 'cleanup records systemd job cancellation' "$CLEANUP_STATE/jobs-history.log" \
+    $'\t'"$CLEANUP_SYSTEMD_JOB"$'\tcancelled\twork:1.1\t'
+assert_contains 'cleanup records unknown delivery for claimed jobs' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tcleanup-running-job\tfailed\twork:1.2\tdelivery outcome is unknown'
+assert_contains 'cleanup recovers a stranded cancelled job' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tcleanup-cancelled-job\tcancelled\twork:1.3\tcancelled during cleanup'
+assert_contains 'cleanup conservatively recovers incomplete transition metadata' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tcleanup-incomplete-job\tfailed\twork:1.6\tdelivery outcome is unknown'
+assert_contains 'cleanup recovers a stranded finishing job' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tcleanup-finishing-job\tsent\twork:1.4\tdelayed input delivered'
+assert_contains 'cleanup recovers a stranded abandoned job' "$CLEANUP_STATE/jobs-history.log" \
+    $'\tcleanup-abandoned-job\tfailed\twork:1.5\tdelivery outcome is unknown'
+if [ -f "$CLEANUP_STATE/disabled" ]; then
+    pass 'cleanup blocks new jobs until the plugin is loaded again'
+else
+    fail 'cleanup blocks new jobs until the plugin is loaded again'
+fi
+if env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_TEST_LOG="$CLEANUP_LOG" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Blocked after cleanup' \
+        --key 'Enter' \
+        --delay 60 >/dev/null 2>&1; then
+    fail 'scheduler refuses new jobs after cleanup'
+else
+    pass 'scheduler refuses new jobs after cleanup'
+fi
+env \
+    PATH="$FIXTURES_DIR:$PATH" \
+    TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+    TMUX_TEST_LOG="$CLEANUP_LOG" \
+    "$PLUGIN_ENTRYPOINT" >/dev/null 2>&1
+if [ ! -f "$CLEANUP_STATE/disabled" ]; then
+    pass 'loading the plugin re-enables scheduling after cleanup'
+else
+    fail 'loading the plugin re-enables scheduling after cleanup'
+fi
+if [ -d "$CLEANUP_STATE/jobs/$CLEANUP_BACKGROUND_JOB" ]; then
+    env TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" "$SCHEDULER" cancel "$CLEANUP_BACKGROUND_JOB" >/dev/null 2>&1 || true
+fi
+if [ -d "$CLEANUP_STATE/jobs/$CLEANUP_SYSTEMD_JOB" ]; then
+    env \
+        PATH="$FIXTURES_DIR:$PATH" \
+        HOME="$TEST_ROOT/home" \
+        XDG_CONFIG_HOME="$CLEANUP_CONFIG" \
+        TMUX_SEND_DELAYED_STATE_DIR="$CLEANUP_STATE" \
+        SYSTEMCTL_TEST_LOG="$CLEANUP_SYSTEMD_LOG" \
+        "$SCHEDULER" cancel "$CLEANUP_SYSTEMD_JOB" >/dev/null 2>&1 || true
+fi
 
 LAUNCH_LOG="$TEST_ROOT/launch-tmux.log"
 env \
