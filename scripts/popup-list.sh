@@ -160,6 +160,7 @@ load_jobs() {
     shopt -s nullglob
     for job_dir in "$state_dir"/jobs/*; do
         [ -d "$job_dir" ] || continue
+        [ -f "$job_dir/ready" ] || continue
         job_id="${job_dir##*/}"
         valid_job_id "$job_id" || continue
         run_at="$(read_field "$job_dir/run-at")"
@@ -464,6 +465,7 @@ render_list() {
     state_dir="$(resolve_state_dir)"
     export TMUX_SEND_DELAYED_STATE_DIR="$state_dir"
     while true; do
+        "$SCHEDULER" reconcile --older-than 300 >/dev/null 2>&1 || true
         load_jobs "$state_dir"
         build_rows "$state_dir"
         clear_popup

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -u
+
+case "${2:-}" in
+    disable|daemon-reload|enable|show-environment) exit 0 ;;
+    stop|is-active) exit 1 ;;
+esac
+
+exit 0

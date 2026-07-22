@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -u
+
+case "${2:-}" in
+    disable|stop|is-active)
+        exit 1
+        ;;
+    enable)
+        timer_unit="${4:-}"
+        job_id="${timer_unit#tmux-lagput-}"
+        job_id="${job_id%.timer}"
+        printf '%s\n' "$job_id" > "$SYSTEMCTL_PUBLISH_JOB_FILE"
+        printf '%s\n' 'publication collision' > "$TMUX_SEND_DELAYED_STATE_DIR/jobs/$job_id"
+        exit 0
+        ;;
+    daemon-reload|show-environment)
+        exit 0
+        ;;
+esac
+
+exit 0

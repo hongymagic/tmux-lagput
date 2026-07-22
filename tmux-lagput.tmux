@@ -35,6 +35,9 @@ list_key="$(tmux_option '@send-delayed-list-key' 'C-t')"
 schedule_command="$(shell_quote "$CURRENT_DIR/scripts/popup-schedule.sh") --open '#{pane_id}' '#{client_name}'"
 list_command="$(shell_quote "$CURRENT_DIR/scripts/popup-list.sh") --open '#{pane_id}' '#{client_name}'"
 
+TMUX_SEND_DELAYED_STATE_DIR="${TMUX_SEND_DELAYED_STATE_DIR:-}" \
+    "$CURRENT_DIR/scripts/schedule-job.sh" enable >/dev/null 2>&1 || true
+
 if binding_enabled "$schedule_key"; then
     tmux bind-key -N 'Schedule delayed pane input' "$schedule_key" run-shell -b "$schedule_command"
 fi

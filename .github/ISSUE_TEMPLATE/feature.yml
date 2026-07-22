@@ -1,0 +1,50 @@
+---
+name: Feature request
+description: Propose a focused improvement to tmux-lagput
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the workflow problem first. Proposals should preserve the
+        dependency-light, cross-platform design.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult today, and who encounters it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: >-
+        Describe the desired command, popup, scheduling, or state behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include workarounds or smaller approaches you considered.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and dependencies
+      description: >-
+        Explain any impact on macOS Bash 3, Linux, tmux 3.3a+, plain Bash, fzf,
+        gum, or systemd.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for a similar proposal.
+          required: true
+        - label: This proposal keeps heavyweight dependencies optional.
+          required: true

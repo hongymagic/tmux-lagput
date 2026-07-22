@@ -1,0 +1,9 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Security or sensitive conduct report
+    url: https://github.com/hongymagic/tmux-lagput/security/advisories/new
+    about: Report privately; prefix conduct report titles with "Conduct:".
+  - name: Support guide
+    url: https://github.com/hongymagic/tmux-lagput/blob/main/SUPPORT.md
+    about: Review setup checks and the information needed for support.

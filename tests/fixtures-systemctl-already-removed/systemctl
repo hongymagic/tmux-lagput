@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -u
+
+unit=''
+{
+    for argument in "$@"; do
+        unit="$argument"
+        printf '%s\t' "$argument"
+    done
+    printf '\n'
+} >> "$SYSTEMCTL_TEST_LOG"
+
+case "${2:-}" in
+    disable|stop)
+        exit 1
+        ;;
+    is-active)
+        case "$unit" in
+            *.timer) printf '%s\n' 'inactive'; exit 3 ;;
+            *.service) printf '%s\n' 'unknown'; exit 4 ;;
+        esac
+        exit 4
+        ;;
+    is-enabled)
+        case "$unit" in
+            *.timer|*.service) printf '%s\n' 'not-found' ;;
+        esac
+        exit 4
+        ;;
+    daemon-reload)
+        exit 0
+        ;;
+esac
+
+exit 0
