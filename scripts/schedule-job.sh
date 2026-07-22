@@ -182,6 +182,43 @@ safe_remove_unit_file() {
     rm -f -- "$unit_file"
 }
 
+systemd_unit_is_inactive() {
+    local unit="$1"
+    local active_state=''
+
+    active_state="$(systemctl --user is-active "$unit" 2>/dev/null || true)"
+    case "$active_state" in
+        inactive|failed|unknown) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+systemd_unit_is_absent() {
+    local unit="$1"
+    local enabled_state=''
+
+    enabled_state="$(systemctl --user is-enabled "$unit" 2>/dev/null || true)"
+    [ "$enabled_state" = 'not-found' ]
+}
+
+systemd_teardown_is_complete() {
+    local timer_unit="$1"
+    local service_unit="$2"
+    local service_file="$3"
+    local timer_file="$4"
+    local stop_service="${5:-1}"
+
+    [ ! -e "$service_file" ] && [ ! -e "$timer_file" ] || return 1
+    systemctl --user daemon-reload >/dev/null 2>&1 || return 1
+    systemd_unit_is_inactive "$timer_unit" || return 1
+    systemd_unit_is_absent "$timer_unit" || return 1
+    systemd_unit_is_absent "$service_unit" || return 1
+    if [ "$stop_service" -eq 1 ]; then
+        systemd_unit_is_inactive "$service_unit" || return 1
+    fi
+    return 0
+}
+
 cleanup_systemd_units() {
     local timer_unit="$1"
     local service_unit="$2"
@@ -194,9 +231,19 @@ cleanup_systemd_units() {
     [[ "$timer_unit" =~ ^tmux-lagput-[A-Za-z0-9._-]+\.timer$ ]] || return 1
     [[ "$service_unit" =~ ^tmux-lagput-[A-Za-z0-9._-]+\.service$ ]] || return 1
     command -v systemctl >/dev/null 2>&1 || return 1
-    systemctl --user disable --now "$timer_unit" >/dev/null 2>&1 || return 1
+    if ! systemctl --user disable --now "$timer_unit" >/dev/null 2>&1; then
+        systemd_teardown_is_complete \
+            "$timer_unit" \
+            "$service_unit" \
+            "$service_file" \
+            "$timer_file" \
+            "$stop_service" || return 1
+        return 0
+    fi
     if [ "$stop_service" -eq 1 ] && [ -n "$service_unit" ]; then
-        systemctl --user stop "$service_unit" >/dev/null 2>&1 || return 1
+        if ! systemctl --user stop "$service_unit" >/dev/null 2>&1; then
+            systemd_unit_is_inactive "$service_unit" || return 1
+        fi
     fi
     safe_remove_unit_file "$service_file" "$service_unit" || cleanup_status=1
     safe_remove_unit_file "$timer_file" "$timer_unit" || cleanup_status=1

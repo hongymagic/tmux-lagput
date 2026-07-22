@@ -499,6 +499,64 @@ env \
     SYSTEMCTL_TEST_LOG="$SYSTEMD_AMBIGUOUS_LOG" \
     "$CLEANUP_SCRIPT" >/dev/null
 
+SYSTEMD_REMOVED_STATE="$TEST_ROOT/systemd-removed-state"
+SYSTEMD_REMOVED_CONFIG="$TEST_ROOT/systemd-removed-config"
+SYSTEMD_REMOVED_LOG="$TEST_ROOT/systemd-removed-systemctl.log"
+SYSTEMD_REMOVED_JOB="$(env \
+    PATH="$ROOT_DIR/tests/fixtures-linux:$FIXTURES_DIR:$PATH" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_REMOVED_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
+    TMUX_TEST_LOG="$TEST_ROOT/systemd-removed-tmux.log" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_REMOVED_LOG" \
+    "$SCHEDULER" schedule \
+        --target '%42' \
+        --display-target 'work:1.0' \
+        --text 'Recover completed teardown' \
+        --key 'Enter' \
+        --delay 120 \
+        --use-systemd)"
+SYSTEMD_REMOVED_TIMER="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_REMOVED_JOB.timer"
+SYSTEMD_REMOVED_SERVICE="$SYSTEMD_REMOVED_CONFIG/systemd/user/tmux-lagput-$SYSTEMD_REMOVED_JOB.service"
+mv \
+    "$SYSTEMD_REMOVED_STATE/jobs/$SYSTEMD_REMOVED_JOB" \
+    "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB"
+printf '%s\n' 'cancelled' > "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB/terminal-status"
+printf '%s\n' 'work:1.0' > "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB/terminal-target"
+printf '%s\n' 'cancelled by user' > "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB/terminal-detail"
+rm -f -- "$SYSTEMD_REMOVED_TIMER" "$SYSTEMD_REMOVED_SERVICE"
+if env \
+    PATH="$ROOT_DIR/tests/fixtures-systemctl-already-removed:$FIXTURES_DIR:/usr/bin:/bin" \
+    HOME="$TEST_ROOT/home" \
+    XDG_CONFIG_HOME="$SYSTEMD_REMOVED_CONFIG" \
+    TMUX_SEND_DELAYED_STATE_DIR="$SYSTEMD_REMOVED_STATE" \
+    SYSTEMCTL_TEST_LOG="$SYSTEMD_REMOVED_LOG" \
+    "$CLEANUP_SCRIPT" >/dev/null 2>&1; then
+    pass 'cleanup completes an already-finished systemd teardown'
+else
+    fail 'cleanup completes an already-finished systemd teardown'
+fi
+if [ ! -d "$SYSTEMD_REMOVED_STATE/cancelled/$SYSTEMD_REMOVED_JOB" ]; then
+    pass 'already-finished systemd teardown removes transition metadata'
+else
+    fail 'already-finished systemd teardown removes transition metadata'
+fi
+assert_contains 'already-finished systemd teardown records history' \
+    "$SYSTEMD_REMOVED_STATE/jobs-history.log" \
+    $'\t'"$SYSTEMD_REMOVED_JOB"$'\tcancelled\twork:1.0\tcancelled by user'
+assert_contains 'already-finished teardown verifies the timer is inactive' \
+    "$SYSTEMD_REMOVED_LOG" \
+    $'--user\tis-active\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.timer'
+assert_contains 'already-finished teardown verifies the timer is not enabled' \
+    "$SYSTEMD_REMOVED_LOG" \
+    $'--user\tis-enabled\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.timer'
+assert_contains 'already-finished teardown verifies the service is inactive' \
+    "$SYSTEMD_REMOVED_LOG" \
+    $'--user\tis-active\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.service'
+assert_contains 'already-finished teardown verifies the service is not enabled' \
+    "$SYSTEMD_REMOVED_LOG" \
+    $'--user\tis-enabled\ttmux-lagput-'"$SYSTEMD_REMOVED_JOB"'.service'
+
 SYSTEMD_PUBLISH_STATE="$TEST_ROOT/systemd-publish-state"
 SYSTEMD_PUBLISH_CONFIG="$TEST_ROOT/systemd-publish-config"
 SYSTEMD_PUBLISH_LOG="$TEST_ROOT/systemd-publish-systemctl.log"
